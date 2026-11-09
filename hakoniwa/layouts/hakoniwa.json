@@ -1,0 +1,139 @@
+{
+  "id": "root",
+  "type": "column",
+  "titlebar": "none",
+  "theme": "paper",
+  "ui_font": "Geist",
+  "font_size": 13,
+  "background": "#f3efe7",
+  "colors": {
+    "background": "#ffffff",
+    "foreground": "#303746",
+    "border": "#e5e7ec",
+    "accent": "#7465db"
+  },
+  "terminal_padding": [
+    12,
+    10
+  ],
+  "gap": 0,
+  "resizable": false,
+  "children": [
+    {
+      "id": "hud-band",
+      "type": "block",
+      "size": {
+        "px": 72
+      },
+      "window_drag": true,
+      "content": {
+        "mod": "hakoniwa",
+        "props": {
+          "role": "band",
+          "buttons": true,
+          "switch": true
+        }
+      }
+    },
+    {
+      "id": "main-row",
+      "type": "row",
+      "size": {
+        "weight": 1
+      },
+      "resizable": false,
+      "gap": 0,
+      "children": [
+        {
+          "id": "office",
+          "type": "block",
+          "size": {
+            "weight": 1
+          },
+          "content": {
+            "mod": "hakoniwa",
+            "props": {
+              "role": "office"
+            }
+          }
+        },
+        {
+          "id": "right",
+          "type": "column",
+          "size": {
+            "px": 480
+          },
+          "hidden": true,
+          "resizable": false,
+          "background": "#fbf8f1",
+          "gap": 0,
+          "children": [
+            {
+              "id": "r-head",
+              "type": "block",
+              "size": {
+                "px": 200
+              },
+              "content": {
+                "mod": "hakoniwa",
+                "props": {
+                  "role": "rhead"
+                }
+              }
+            },
+            {
+              "id": "r-body",
+              "type": "stack",
+              "size": {
+                "weight": 1
+              },
+              "active": "r-term",
+              "children": [
+                {
+                  "id": "r-term",
+                  "type": "block",
+                  "content": {
+                    "agent": "focused"
+                  }
+                },
+                {
+                  "id": "r-chat",
+                  "type": "block",
+                  "content": {
+                    "mod": "hakoniwa",
+                    "props": {
+                      "role": "rchat"
+                    }
+                  }
+                },
+                {
+                  "id": "r-tree",
+                  "type": "block",
+                  "content": {
+                    "mod": "hakoniwa",
+                    "props": {
+                      "role": "rtree"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hud-footer",
+      "type": "block",
+      "size": {
+        "px": 40
+      },
+      "content": {
+        "mod": "hakoniwa",
+        "props": {
+          "role": "footer"
+        }
+      }
+    }
+  ]
+}

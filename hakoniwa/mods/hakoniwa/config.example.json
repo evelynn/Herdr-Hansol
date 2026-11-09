@@ -1,0 +1,64 @@
+{
+  "_help": "Copy to config.json (same folder) and keep only what you change. Every key is optional: without config.json the mod finds Python on PATH (Windows: pythonw, python, py; elsewhere python3, python), runs the scripts in py/, and reads the state file where the collector writes it. Keys starting with _help are notes and are ignored.",
+
+  "_help_paths": "Absolute paths of the programs; null = found by the mod. Set python when it is not on PATH (e.g. \"C:/Python312/pythonw.exe\"). collector / office_script: default <herdr-app>/mods/hakoniwa/py/hakoniwa-collector.py and hakoniwa-office.py. state_dir / state: where the collector writes state.json (default %LOCALAPPDATA%/hakoniwa; set them together with the collector's --out only if you move it).",
+  "python": null,
+  "collector": null,
+  "office_script": null,
+  "state_dir": null,
+  "state": null,
+
+  "_help_demo": "demo: true starts with the made-up cast (also: herdr-app do hakoniwa.demo). demo_args: extra collector arguments for the demo, e.g. [\"--demo-size\", \"40\", \"--demo-spaces\", \"8\"].",
+  "demo": false,
+  "demo_args": [],
+
+  "office": {
+    "_help_sources": "What is collected. true: always, false: never, \"auto\": only when that program is on this PC. app = Herdr App (herdr-core), t3 = T3 Code, tui = herdr TUI.",
+    "sources": {"app": true, "t3": "auto", "tui": "auto"},
+
+    "_help_rooms": "Rooms from the top. key: an id; title: the name on the floor; sources: which boxes go in; match: {\"app\": \"codex\"} puts only that kind of agent of the App in this room (rooms with match are decided first). A room with nobody in it is not drawn.",
+    "rooms": [
+      {"key": "t3", "title": "T3 Code", "sources": ["t3"]},
+      {"key": "app", "title": "Herdr App", "sources": ["app"]},
+      {"key": "tui", "title": "herdr TUI", "sources": ["tui"]}
+    ],
+    "_help_auto_rooms": "true: a room lives with its people. The office closes a Herdr space 6 s after the last agent it saw there is gone and no terminal is left in it, names a new space after its first agent, and moves a leader's team into one space. false: it never closes, renames or moves anything by itself.",
+    "auto_rooms": true,
+    "spare_desks": 1,
+    "seat_hold_min": 10,
+    "_help_people": "walk8: the 8-frame walk; walk_frames: false shows one picture with a bob instead of stepping the walking pictures.",
+    "walk8": true,
+    "walk_frames": true,
+
+    "_help_weather": "The wall board and the window show the weather from Open-Meteo (free, no key), asked by the collector at most every 30 minutes. No place given: a city chosen from the PC's timezone. place: a city name, looked up once. lat / lon: exact (beats place). label: the name on the board. enabled: false never asks.",
+    "weather": {"enabled": true, "place": null, "lat": null, "lon": null, "label": ""},
+
+    "_help_board": "The LED board on the wall: rows of dots (its width follows the room unless set).",
+    "board": {"rows": 30},
+
+    "_help_colors": "people.mode \"list\" picks each person's jacket / hair / skin from the lists (null: the built-in lists) by the agent's id; \"generate\" makes them from the ranges. chair / floor: a HEX colour or null. states and ui: the colours of the four states and of the panels.",
+    "colors": {
+      "people": {"mode": "list", "jackets": null, "hairs": null, "skins": null,
+                 "generate": {"jacket": {"s": [0.35, 0.75], "l": [0.35, 0.6]}, "skin": "natural", "hair": "natural", "hair_fancy": false}},
+      "chair": null,
+      "floor": null,
+      "states": {"blocked": "#F28C28", "working": "#2F80ED", "done": "#27AE60", "idle": "#8A94A6"},
+      "ui": {"surface": "#FFFDF8", "ink": "#1F2A37", "accent": "#1E6FE0"}
+    },
+
+    "_help_sheets": "The art: a folder with the same file names as py/sheets (or {\"dir\": folder, \"room\": file, ...}). The pieces are cut again when the files change.",
+    "sheets": null,
+
+    "_help_launch": "How agents started from the office begin. kinds.<kind>.argv replaces the start words of claude / codex / opencode / cursor / agy (the default is each CLI by itself, with no permission widened). Example for Codex with workspace writes: [\"codex\", \"-s\", \"workspace-write\"]. claude_settings.persist: every Claude started here gets a --settings file that sets CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 (so its conversation can be shown); effort: a chosen effort is also put in that file (CLAUDE_CODE_EFFORT_LEVEL), so it wins over an effort set in your own settings.json.",
+    "launch": {
+      "kinds": {
+        "claude": {"argv": ["claude"]},
+        "codex": {"argv": ["codex"]},
+        "opencode": {"argv": ["opencode"]},
+        "cursor": {"argv": ["cursor-agent"]},
+        "agy": {"argv": ["agy"]}
+      },
+      "claude_settings": {"persist": true, "effort": true}
+    }
+  }
+}
