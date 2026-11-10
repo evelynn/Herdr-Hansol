@@ -5,7 +5,7 @@ Antigravity, in Herdr App, herdr TUI or T3 Code) works at a desk in a little iso
 entrance, type while they work, raise a hand when they wait for your approval, bring a paper when they have a report,
 and leave when they are done. Click a person to read the conversation, approve, or type to them.
 
-Made by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-top), a company in Fukuoka, Japan, that builds websites and automates work with AI.
+Made by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-top) in Fukuoka, Japan. Trellis builds websites and automates work with AI.
 
 ![Hakoniwa](hakoniwa/preview.png)
 
@@ -108,7 +108,7 @@ Delete `layouts/hakoniwa.json`, `mods/hakoniwa/`, `hakoniwa-office/` (all under 
 
 ## About Trellis
 
-Hakoniwa is made and shared by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-about), a company in Fukuoka, Japan. We build websites and automate work with AI agents.
+Hakoniwa is made and shared by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-about) in Fukuoka, Japan. Trellis builds websites and automates work with AI agents.
 How Hakoniwa was built is on our [tech notes](https://trellis-grow.com/tech/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-technotes) (in Japanese).
 
 ## License
