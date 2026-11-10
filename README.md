@@ -5,6 +5,8 @@ Antigravity, in Herdr App, herdr TUI or T3 Code) works at a desk in a little iso
 entrance, type while they work, raise a hand when they wait for your approval, bring a paper when they have a report,
 and leave when they are done. Click a person to read the conversation, approve, or type to them.
 
+Made by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-top), a company in Fukuoka, Japan, that builds websites and automates work with AI.
+
 ![Hakoniwa](hakoniwa/preview.png)
 
 日本語は下にあります。
@@ -104,6 +106,11 @@ Herdr asks you to know this before adding a mod. Hakoniwa does all three:
 Delete `layouts/hakoniwa.json`, `mods/hakoniwa/`, `hakoniwa-office/` (all under `~/.config/herdr-app`) and
 `%LOCALAPPDATA%/hakoniwa/`. Run `install-hooks.py --uninstall` first if you installed the hooks.
 
+## About Trellis
+
+Hakoniwa is made and shared by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-about), a company in Fukuoka, Japan. We build websites and automate work with AI agents.
+How Hakoniwa was built is on our [tech notes](https://trellis-grow.com/tech/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-technotes) (in Japanese).
+
 ## License
 
 MIT (see `LICENSE`).
@@ -112,12 +119,14 @@ The pixel-art furniture, rooms and people (`mods/hakoniwa/py/sheets/`) were made
 
 ---
 
-# 箱庭（Hakoniwa）— コーディングエージェントのドット絵オフィス
+# Hakoniwa — コーディングエージェントのドット絵オフィス
 
 [Herdr App](https://herdr.dev) のレイアウトです。PC で動くコーディングエージェント（Claude Code・Codex・OpenCode・Cursor・
 Copilot・Antigravity。Herdr App・herdr TUI・T3 Code の中のもの）が、小さなオフィスの机で働きます。入口から入ってきて、作業中は
 PC を打ち、承認を待つと手を挙げ、報告があると書類を持って立ち、終わると出ていきます。人を押すと、会話を読む・承認する・
 打ち込むことができます。
+
+作ったのは、福岡でホームページの制作と AI による業務の自動化をしている [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-top-ja) です。
 
 ## 見えるもの
 
@@ -181,7 +190,7 @@ python ~/.config/herdr-app/mods/hakoniwa/integrations/install-hooks.py --uninsta
 
 ## この PC でしていること
 
-Herdr は、mod を入れる前に次の3つを知らせるよう求めている。箱庭は3つともする。
+Herdr は、mod を入れる前に次の3つを知らせるよう求めている。Hakoniwa は3つともする。
 
 - **ネットに出る**: collector が天気を Open-Meteo（`api.open-meteo.com`。地名を書いたときは最初の1回だけ
   `geocoding-api.open-meteo.com`）に、多くて30分に1回問い合わせる。キーは要らず、送るのは場所だけ。
@@ -207,6 +216,11 @@ Herdr は、mod を入れる前に次の3つを知らせるよう求めている
 
 `~/.config/herdr-app` の `layouts/hakoniwa.json`・`mods/hakoniwa/`・`hakoniwa-office/` と、`%LOCALAPPDATA%/hakoniwa/` を消す。
 フックを入れたときは、先に `install-hooks.py --uninstall` を流す。
+
+## Trellis について
+
+Hakoniwa は、福岡でホームページの制作と、AI による業務の自動化をしている [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-about-ja) が作って配っています。
+作り方は [Trellis の技術ノート](https://trellis-grow.com/tech/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=readme-technotes-ja) に書いています。
 
 ## ライセンス
 

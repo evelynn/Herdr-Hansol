@@ -130,3 +130,7 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   承認 / 却下, and pressing one changes the agent's state.
 - Starting an agent with the band's エージェント button opens a tab in the chosen space running that CLI, and the person
   walks in at the entrance.
+
+---
+
+Made by [Trellis](https://trellis-grow.com/?utm_source=github.com&utm_medium=referral&utm_campaign=herdr-hakoniwa&utm_content=recipe), Fukuoka, Japan.
