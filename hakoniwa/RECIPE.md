@@ -17,12 +17,16 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
   `icons/hakoniwa-head.png`, 44 px). Then one chip per state with its count, coloured by state (working `#2F80ED`, blocked
   `#F28C28`, done `#27AE60`, idle `#8A94A6`), Claude Code usage (percent of the current session, grey when the value is
   older than 15 min), and the "エージェント" button that opens the new-agent window. Text ink `#1F2A37`, muted `#7b8494`.
-- **Office floor**, the rest of the window. A pixel-art floor drawn from PNG pieces: an entrance with a reception desk and a
-  welcome board at the lower left, a narrow drinks corner (coffee, water, vending machine), office machines at the end of
-  the rows (copier, lockers, shredder), then one glass-walled room per Herdr space with one desk per agent plus one spare.
-  Each room has a name plate at its front corner. Windows show the outside: morning, day, evening or night pictures by the
-  clock, with clouds, rain, snow, fog or thunder from the weather; a moon and stars at night. An LED board on a wall shows
-  the place, temperature and counts.
+- **Office floor**, the rest of the window. A pixel-art floor drawn from PNG pieces: an entrance door with a welcome board
+  and a plant at the lower left, the drinks (vending machine, coffee, water, microwave, fridge) beside the LED board, office
+  machines and shelves along the partitions (copier, shredder, lockers, bookshelf, whiteboard, sorted bins), round tables
+  on the free floor, then one glass-walled room per Herdr space, stacked in one column towards the lower left, with one desk
+  per agent plus one spare and a plant at its back corner. The floor's size follows the rooms and the people. Each room has
+  a name plate at its front corner. Windows show the outside: morning, day, evening or night pictures by the clock, with
+  clouds, rain, snow, fog or thunder from the weather; a moon (its phase from the date) and stars at night; now and then a
+  flock of birds flies past (not in rain, snow or thunder). An LED board on a wall shows the date, time, place,
+  temperature and counts. On the floor's left edge a folding list of spaces and their agents and terminals (a crown on
+  leaders), with 「新しいエージェント」 and 「スペースを作る」 at the bottom.
 - **Right column**, 480 px, background `#fbf8f1`, hidden until a person is clicked: a 200 px head (name, state chip, model,
   what the agent is doing, buttons), then one of three views stacked in the same place: the agent's terminal, its
   conversation (bubbles: the person's in `#d6e6fb`, the agent's in `#e8f0fe`, tool lines in `#f6f7f9`), or the team tree.
@@ -34,13 +38,15 @@ Top to bottom (layout `hakoniwa`, theme `paper`, UI font Geist 13, window backgr
 
 - **working**: sits at the desk typing (two typing frames), the monitor shows scrolling code, a blue dot over the head. The
   longer the run, the more cans and cups on the desk; the more memory, the taller the paper pile.
-- **blocked** (approval or a question): stands facing us with an empty hand raised, a bouncing orange `!`; then walks to the
-  approval window and queues there. The right column shows the request; 承認 / 却下 press the choice the agent's screen offers
+- **blocked** (approval or a question): stands up at the own desk facing us with an empty hand raised, a bouncing orange
+  `!`. The right column shows the request; 承認 / 却下 press the choice the agent's screen offers
   (read from the terminal text with `hc read`, never a fixed number) and the column says whether the state changed.
-- **done** (a report): stands holding a paper with a green `✓`, walks to the counter window to hand it in, then goes back to
-  the seat; the chair at the desk is empty meanwhile.
+- **done** (a report): stands at the own desk holding a paper with a green `✓`; sits down again once the report is seen.
 - **idle**: sits at the own desk with a red mug (the mug is only for idle). Idle for 60 min or more is a look, not a state:
-  the bubble fades.
+  the bubble fades. Now and then an idle person walks to the nearest water server or coffee machine (sometimes the vending
+  machine) and comes back with a cup; at most 1-2 people are on a break at once.
+- **Walking**: there is no approval desk, counter or lounge. People walk only to come in and leave, to meet another agent
+  (below) and for that short break.
 - **New and gone**: a new agent walks in through the entrance door (it opens and closes) to its desk; a gone one walks out.
 - **Leaders**: an agent with workers wears a black jacket and has a gold ring at the feet (a crown in the left tree). When
   agents message each other they leave their seats for a few seconds and meet with a "…" bubble.
