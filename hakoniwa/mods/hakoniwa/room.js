@@ -10,7 +10,7 @@ import { icon } from "./icons.js";
 import { closeRoom, closeRoomQuestion, findAgent, folderLabel, newRoom, newRoomHeight, normFolder, parseCommand, recentFolders, roomOps, runAgentOps, runMovePlan, spaceForIsland, stopAgent, stopQuestion } from "./actions.js";
 
 export const OP_ERROR_MS = 8000; // ★104 U12
-export const REVIEW_COMMANDS =["select", "plate", "stop", "launch", "panel", "panel-row", "panel-menu", "inbox", "feed", "usage", "chip", "room-new", "space-menu"];
+export const REVIEW_COMMANDS =["select", "detail", "plate", "stop", "launch", "panel", "panel-row", "panel-menu", "inbox", "feed", "usage", "chip", "room-new", "space-menu"];
 
 export class RoomPart {
   // ★61-1 review pictures without clicks: herdr-app do hakoniwa.<command>[:<target>] (or the target in <appHome>/hakoniwa-aim.json).
@@ -23,7 +23,8 @@ export class RoomPart {
     if (!String(command).includes(":")) { try { aim = JSON.parse((await readTextFile(`${appHome()}/hakoniwa-aim.json`)) ?? "null"); } catch {} }
     const { name, arg } = parseCommand(command, aim), list = this.items();
     const sel = () => list.find((a) => a.id === shared("hakoniwa.sel")) ?? null;
-    if (name === "select") {
+    if (name === "detail") { const t = findAgent(list, arg); if (t) this.openChat(t); }
+    else if (name === "select") {
       const t = findAgent(list, arg); if (!t) return true;
       if (props()?.switch && shared("hakoniwa.view") !== "board") setShared("hakoniwa.pick", { state: t.status, id: t.id, at: Date.now() });
       else this.openChat(t);
@@ -114,14 +115,14 @@ export class RoomPart {
     const sp = spaceForIsland(members, list, isl), ops = roomOps(sp, this.roomLive());
     if (!ops.length) return null;
     const btn = (op) => div().id(`room-${op.key}-${isl.key}`).flex_none().px(6).py(2).rounded(6).border(1).border_color(op.key === "close" ? "#e3a9b3" : P.line).bg(P.white)
-      .text_size(10).font_weight(600).text_color(op.key === "close" ? "#d6455d" : P.ink).cursor_pointer().hover((s) => s.bg("#f3efe4"))
+      .text_size(10).font_weight(600).text_color(op.key === "close" ? "#d6455d" : P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50"))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => {
         cx.stop_propagation(); this.plateOpen = null;
         cx.spawn(async (cx) => { const r = await runAgentOps(run, [op]); this.roomError = r.ok ? null : { key: isl.key, text: r.error }; cx.notify(); });
         cx.notify();
       }).child(op.label);
-    return v_flex().gap(3).pb(4).mb(2).border_b(1).border_color("#e6e2d8")
+    return v_flex().gap(3).pb(4).mb(2).border_b(1).border_color("#3b4b60")
       .child(h_flex().gap(4).flex_wrap().children(ops.map(btn)))
       .when(this.roomError?.key === isl.key, (el) => el.child(div().text_size(9).text_color("#d6455d").child(this.roomError.text)));
   }
@@ -129,13 +130,13 @@ export class RoomPart {
   askCloseRoom(sp, members) {
     const q = closeRoomQuestion(sp, members);
     openOverlay({ mod: "hakoniwa", kind: "dialog", modal: true, width: 440, height: q.strong ? 260 : 220,
-      props: { role: "confirm", action: "room-close", title: "部屋を閉じる", yes: "はい、閉じる", space: { id: sp.id, name: sp.name }, text: q.text, strong: q.strong } });
+      props: { role: "confirm", action: "room-close", title: "공간 닫기", yes: "네, 닫기", space: { id: sp.id, name: sp.name }, text: q.text, strong: q.strong } });
   }
 
   askStop(a) {
     const q = stopQuestion(a);
     openOverlay({ mod: "hakoniwa", kind: "dialog", modal: true, width: 440, height: 210,
-      props: { role: "confirm", action: "stop", title: "作業を止める", yes: "はい、止める", address: a.address, source: a.source, text: q.text, strong: q.strong } });
+      props: { role: "confirm", action: "stop", title: "작업 중단", yes: "네, 중단", address: a.address, source: a.source, text: q.text, strong: q.strong } });
   }
 
   // The "はい" of the confirm dialog for the room / stop actions (ending an agent stays in chat.js).
@@ -161,10 +162,10 @@ export class RoomPart {
   // "＋ 部屋": for the band (placed by the band's owner beside the launch button).
   newRoomButton(compact = false) { // compact (a narrow band): only the "＋"
     return h_flex().id("room-new-btn").flex_none().ml(6).px(compact ? 8 : 10).h(30).gap(6).items_center().rounded(10).border(1).border_color(P.line)
-      .bg(P.white).cursor_pointer().hover((s) => s.bg("#f0ede4"))
+      .bg(P.white).cursor_pointer().hover((s) => s.bg("#253449"))
       .on_click(() => this.openNewRoom())
       .child(icon("room-add", 16, P.blue))
-      .when(!compact, (el) => el.child(div().text_size(12).font_weight(600).text_color(P.ink).child("部屋")));
+      .when(!compact, (el) => el.child(div().text_size(12).font_weight(600).text_color(P.ink).child("공간")));
   }
   // ★107 the window that makes a space (name + folder). `folder`: the folder filled in when it opens (optional).
   // 18th F6: the recent folders are read first (view.json + the spaces' own, no test folders) so the window is as tall as its content and does not read them again.
@@ -180,9 +181,9 @@ export class RoomPart {
   initRoomNew(cx) {
     const p = props() ?? {};
     this.roomForm = { error: null, busy: false, recent: Array.isArray(p.recent) ? p.recent : [], spaces: Array.isArray(p.spaces) ? p.spaces : [] };
-    if (Array.isArray(p.recent)) { this.rName = InputState.new({ placeholder: "部屋（スペース）の名前（プロジェクト名）" }); this.rFolder = InputState.new({ placeholder: "フォルダ（空ならホーム）", value: p.folder ?? "" }); return; } // 18th F6: already read when the window was opened
-    this.rName = InputState.new({ placeholder: "部屋（スペース）の名前（プロジェクト名）" });
-    this.rFolder = InputState.new({ placeholder: "フォルダ（空ならホーム）", value: p.folder ?? "" });
+    if (Array.isArray(p.recent)) { this.rName = InputState.new({ placeholder: "공간 이름 (프로젝트 이름)" }); this.rFolder = InputState.new({ placeholder: "폴더 (비우면 홈)", value: p.folder ?? "" }); return; } // 18th F6: already read when the window was opened
+    this.rName = InputState.new({ placeholder: "공간 이름 (프로젝트 이름)" });
+    this.rFolder = InputState.new({ placeholder: "폴더 (비우면 홈)", value: p.folder ?? "" });
     // the folders to pick from: read once, here (never in a render): the spaces' own, then view.json's recent
     cx?.spawn?.(async (cx2) => {
       let view = null, sl = []; try { view = JSON.parse(String(await readTextFile(`${appHome()}/view.json`) ?? "")); } catch {}
@@ -208,23 +209,23 @@ export class RoomPart {
     };
     const setFolder = (v, cx) => { this.rFolder?.set_value?.(v); f.error = null; cx.notify(); };
     // 8th Y6: gpui-base's Input is unstyled (no frame), so each one sits in a framed box
-    const framed = (input) => div().w_full().h(40).px(10).flex().items_center().rounded(8).border(1.5).border_color("#b9b4a6").bg("#ffffff").child(input);
+    const framed = (input) => div().w_full().h(40).px(10).flex().items_center().rounded(8).border(1.5).border_color("#b9b4a6").bg("#1b2637").child(input);
     const chip = (id, text, fn) => div().id(id).flex_none().max_w(200).truncate().px(10).py(4).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(12).text_color(P.ink)
-      .cursor_pointer().hover((s) => s.bg("#f3efe4")).on_click((_e, cx) => fn(cx)).child(text);
+      .cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click((_e, cx) => fn(cx)).child(text);
     return v_flex().id("room-new-root").size_full().p(18).gap(12).bg(P.paper).overflow_hidden()
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(p.overlay); cx.stop_propagation(); } else if (e.key === "enter") { submit(e, cx); cx.stop_propagation(); } })
-      .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child("新しいスペース（プロジェクト）"))
+      .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child("새 공간 (프로젝트)"))
       .child(div().id("room-new-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(v_flex().gap(12)
-        .child(v_flex().gap(5).child(label("名前")).when(!!this.rName, (el) => el.child(framed(Input.new(this.rName)))))
-        .child(v_flex().gap(5).child(label("フォルダ（この部屋の端末が始まる場所）")).when(!!this.rFolder, (el) => el.child(framed(Input.new(this.rFolder))))
-          .child(h_flex().gap(6).child(chip("room-new-pick", "選ぶ…", (cx) => cx.spawn(async (cx2) => { let d = null; try { d = await pickFolder({ prompt: "選ぶ" }); } catch {} if (d) setFolder(normFolder(d), cx2); }))))
-          .when((f.recent ?? []).length > 0, (el) => el.child(div().id("room-new-recent-head").text_size(11).text_color(P.muted).child("最近のフォルダ"))
+        .child(v_flex().gap(5).child(label("이름")).when(!!this.rName, (el) => el.child(framed(Input.new(this.rName)))))
+        .child(v_flex().gap(5).child(label("폴더 (공간의 터미널이 시작되는 위치)")).when(!!this.rFolder, (el) => el.child(framed(Input.new(this.rFolder))))
+          .child(h_flex().gap(6).child(chip("room-new-pick", "선택…", (cx) => cx.spawn(async (cx2) => { let d = null; try { d = await pickFolder({ prompt: "선택" }); } catch {} if (d) setFolder(normFolder(d), cx2); }))))
+          .when((f.recent ?? []).length > 0, (el) => el.child(div().id("room-new-recent-head").text_size(11).text_color(P.muted).child("최근 폴더"))
             .child(h_flex().gap(6).flex_wrap().children((f.recent ?? []).map((d, i) => chip(`room-new-recent-${i}`, folderLabel(d) || d, (cx) => setFolder(d, cx)))))))))
       .child(h_flex().flex_none().gap(10).items_center()
         .child(div().id("room-new-error").flex_1().min_w(0).max_h(36).overflow_hidden().text_size(11).text_color("#d6455d").child(f.error ?? "")) // 19th G2: the error shares the buttons' row (no row reserved for it)
         .child(div().id("room-new-cancel").flex_none().px(16).py(8).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink)
-          .cursor_pointer().on_click(() => closeOverlay(p.overlay)).child("やめる"))
-        .child(div().id("room-new-go").flex_none().px(16).py(8).rounded(8).bg(P.blue).text_size(13).font_weight(700).text_color("#ffffff")
-          .cursor_pointer().on_click(submit).child(f.busy ? "作っています…" : "作る")));
+          .cursor_pointer().on_click(() => closeOverlay(p.overlay)).child("취소"))
+        .child(div().id("room-new-go").flex_none().px(16).py(8).rounded(8).bg("#1e6fe0").text_size(13).font_weight(700).text_color("#ffffff")
+          .cursor_pointer().on_click(submit).child(f.busy ? "만드는 중…" : "만들기")));
   }
 }

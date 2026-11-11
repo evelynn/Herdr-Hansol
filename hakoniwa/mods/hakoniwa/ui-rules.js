@@ -77,15 +77,16 @@ export function nextInState(list, state, curId) {
   return { person: xs[k], index: k + 1, total: xs.length };
 }
 // ★103-2 (2nd): a header count lists everyone in its state (same order as above). 0 -> nothing, 1 -> straight to that person, 2+ -> a list under the chip.
+export const shellWaiting = (a) => (a.status === "idle" && !!a.shell_active) || (a.status === "working" && !!a.shell_waiting);
 export function chipPeople(list, state) {
-  return (list ?? []).filter((a) => a.status === state).sort((a, b) => state === "done" ? b.since - a.since : a.since - b.since);
+  return (list ?? []).filter((a) => state === "shell" ? shellWaiting(a) : a.status === state && !shellWaiting(a)).sort((a, b) => state === "done" ? b.since - a.since : a.since - b.since);
 }
 export const chipAction = (n) => n <= 0 ? "none" : n === 1 ? "direct" : "list";
 // 10th: `row` is the one number for a row's height (two lines: name 17px + room 15px); main.js draws with it and chipListHeight sizes the popup with it.
 export const CHIP_LIST = { w: 360, maxRows: 8, pad: 8, row: 56 };
 // ★103 (polish): a count with 2+ people shows "▾" (a press opens the list). 14px caret + the pill's 7px gap = CARET_W, counted in bandNeed.
 export const CARET = "▾", CARET_W = 14 + 7;
-export const PANEL_HINT = "ドラッグで部屋を移動";
+export const PANEL_HINT = "드래그해 공간 이동";
 export const showCaret =(n) => chipAction(n) === "list";
 export const chipListHeight = (n) => Math.min(n, CHIP_LIST.maxRows) * CHIP_LIST.row + CHIP_LIST.pad * 2;
 // The band's needed width at a given step, to check 1400 / 1100 px by calculation (the App can't be shot here). All numbers are the drawn sizes in main.js band().

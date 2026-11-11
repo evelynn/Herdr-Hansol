@@ -80,7 +80,7 @@ export const FREE_SPACE = "__free__";
 // standard layout's Agents list shows it. The collector draws that space as the free desk island (island_of). Only a child (--parent) still goes by hc run.
 export const FREE_NAME = "フリー";
 // ★68-2 "＋ ターミナル": a shell only (no agent). In a space: tab.new without argv; free: hc run with no program (the machine's own shell).
-export const SHELL_KIND = { key: "shell", label: "ターミナル（shell）", argv: [] };
+export const SHELL_KIND = { key: "shell", label: "터미널 (shell)", argv: [] };
 // How each kind takes its first instruction on the command line when started by hc (no App to type it in). agy: none known, so it is
 // typed in with `hc send` after the start (it waits until the program pauses).
 const TASK_ARGS = { claude: (t) => [t], codex: (t) => [t], cursor: (t) => [t], opencode: (t) => ["--prompt", t] };
@@ -95,12 +95,12 @@ export function defaultSpace(spaceList, selected) {
 // form: { space (an id, or NEW_SPACE), newName, kind, folder, task }. Returns { ok, error, calls: [{ cmd, args }] }; nothing is called here.
 export function launchPlan(form, spaceList = []) {
   const kind = form?.kind === "shell" ? SHELL_KIND : AGENT_KINDS.find((k) => k.key === form?.kind);
-  if (!kind) return { ok: false, error: "種類を選んでください", calls: [] };
+  if (!kind) return { ok: false, error: "종류를 선택해 주세요", calls: [] };
   const folder = String(form.folder ?? "").trim(), task = String(form.task ?? "").trim();
   const label = String(form.name ?? "").trim(); // ★61-1: the agent's name = its tab's name (the office and the Agents list read it from the tab)
   const ka = kind.argv.length ? kindArgv(kind.key, form.model, form.effort, form.effortDir, form.options) : { argv: [], writes: [] }; // ★79 model / effort after the permission words
   const child = form.parentMode === "child" && kind.argv.length > 0; // ★79 a child: hc run --parent <terminal> (the App's tab.new cannot name a parent); the space is not used
-  if (child && !String(form.parent ?? "").trim()) return { ok: false, error: "ワーカーとして立てるときは、リーダーにするエージェントを選んでください", calls: [] };
+  if (child && !String(form.parent ?? "").trim()) return { ok: false, error: "작업자를 시작하려면 리더 에이전트를 선택해 주세요", calls: [] };
   if (child) { // ★68-2: herdr-core's hc (the App's hc()): a child hangs under its leader (the standard Agents list shows it there)
     // ★96-3 what a person reads is the `display` label (any language); hc's --name (a-z 0-9 - _ . only) is for addressing, so it is added only when the name fits
     const head = child ? ["run", "--bg", "--parent", String(form.parent).trim(), "--no-notify", ...(label ? ["--label", `display=${label}`] : []), ...(label && HC_NAME.test(label) ? ["--name", label] : []), ...(folder ? ["--cwd", folder] : [])]
@@ -121,7 +121,7 @@ export function launchPlan(form, spaceList = []) {
     return { ok: true, writes: ka.writes, calls: [{ cmd: "space.new", args: { ...(name ? { name } : {}), ...(label ? { tab: label } : {}), ...common } }] }; // space.new takes the agent (argv) and its first message (task) itself: one call, no id to wait for
   }
   const sp = spaceList.find((s) => s.id === form.space);
-  if (!sp) return { ok: false, error: "選んだスペースが見つかりません", calls: [] };
+  if (!sp) return { ok: false, error: "선택한 공간을 찾을 수 없습니다", calls: [] };
   return { ok: true, writes: ka.writes, calls: [{ cmd: "tab.new", args: { space: sp.id, ...(label ? { name: label } : {}), ...common } }] };
 }
 
@@ -131,10 +131,10 @@ export async function launchAgent(run, form, spaceList, hc = null, write = null)
   const plan = launchPlan(form, spaceList);
   if (!plan.ok) return plan;
   try {
-    for (const w of plan.writes ?? []) { if (!write) return { ok: false, error: "設定ファイルを書けません", calls: plan.calls }; await write(w.path, w.text); } // ★79 the --settings file that makes `--effort` work
+    for (const w of plan.writes ?? []) { if (!write) return { ok: false, error: "설정 파일을 쓸 수 없습니다", calls: plan.calls }; await write(w.path, w.text); } // ★79 the --settings file that makes `--effort` work
     for (const c of plan.calls) {
       if (!c.hc) { await run(c.cmd, c.args); continue; }
-      if (!hc) return { ok: false, error: "hc が使えません", calls: plan.calls };
+      if (!hc) return { ok: false, error: "hc를 사용할 수 없습니다", calls: plan.calls };
       const r = await hc(c.hc);
       if (r?.code) return { ok: false, error: String(r.stderr || r.stdout || `hc run: ${r.code}`).slice(0, 200), calls: plan.calls };
       if (c.sendTask) { let addr = null; try { addr = JSON.parse(String(r?.stdout ?? "").trim().split(/\r?\n/).pop()).address; } catch {} if (addr) await hc(["send", addr, c.sendTask]); }
@@ -151,19 +151,19 @@ export const isWatcher = (a) => a?.source === "t3" || /t3/i.test(String(a?.app ?
 // "このセッション（名前）"; only a leader with workers adds "ワーカー N 人も一緒に終わります".
 export function endQuestion(a, list = []) {
   const kids = list.filter((x) => x.parent_id === a.id).length, who = a.name || a.address || a.id;
-  const lines = [a.shell ? "このセッションを終えますか" : `このセッション（${who}）を終えますか`];
-  if (kids) lines.push(`ワーカー ${kids}人も一緒に終わります。`);
-  if (isWatcher(a)) lines.push("⚠ T3 Code の監視役です。終えると、ほかのエージェントを見守る人がいなくなります。");
-  if (a.status === "working") lines.push("⚠ いま作業中です。終えると途中の作業は止まります。");
-  if (a.status === "blocked") lines.push("承認待ちの操作は実行されません。");
-  lines.push("この操作は元に戻せません。");
+  const lines = [a.shell ? "이 세션을 종료하시겠습니까?" : `이 세션 (${who})을 종료하시겠습니까?`];
+  if (kids) lines.push(`작업자 ${kids}명도 함께 종료됩니다.`);
+  if (isWatcher(a)) lines.push("⚠ T3 Code 감시 에이전트입니다. 종료하면 다른 에이전트를 감시할 수 없습니다.");
+  if (a.status === "working") lines.push("⚠ 작업 중입니다. 종료하면 진행 중인 작업이 중단됩니다.");
+  if (a.status === "blocked") lines.push("승인 대기 중인 작업은 실행되지 않습니다.");
+  lines.push("이 작업은 되돌릴 수 없습니다.");
   return { text: lines.join("\n"), strong: isWatcher(a) || a.status === "working", kids };
 }
 
 // Only an App terminal can be ended from here. No → nothing is called.
 export async function endAgent(run, a, answer) {
   if (answer !== true) return { ok: true, called: false, calls: [] };
-  if (!a?.address || a.source !== "app") return { ok: false, called: false, error: "この物は App の端末ではないので終えられません", calls: [] };
+  if (!a?.address || a.source !== "app") return { ok: false, called: false, error: "Herdr 터미널이 아니므로 종료할 수 없습니다", calls: [] };
   const calls = [{ cmd: "terminal.kill", args: { terminal: a.address } }];
   try { for (const c of calls) await run(c.cmd, c.args); } catch (e) { return { ok: false, called: true, error: String(e), calls }; }
   return { ok: true, called: true, calls };
@@ -174,7 +174,7 @@ export async function endAgent(run, a, answer) {
 export function agentOps(a, tabId = null, live = true) {
   if (!live || a?.source !== "app" || !a?.address) return [];
   const ops = []; // ★84 "端末へ移る" (agent.focus) and "上に固定" (terminal.pin) are gone: they do nothing visible in the office layout
-  if (tabId) ops.push({ key: "rename", label: "名前を変える", cmd: "tab.rename", args: { id: tabId } }); // no name: the App asks the person
+  if (tabId) ops.push({ key: "rename", label: "이름 변경", cmd: "tab.rename", args: { id: tabId } }); // no name: the App asks the person
   return ops;
 }
 
@@ -197,14 +197,14 @@ export async function runAgentOps(run, ops) {
 // (it presses the stop key and reports). Asked first like ending; `exec` is the mod's program caller (swapped for a fake in the tests).
 export function stopQuestion(a) {
   const who = a.name || a.address || a.id;
-  const lines = [`「${who}」の作業を止めますか？（止めるキーを押します。端末は残ります）`];
-  if (isWatcher(a)) lines.push("⚠ T3 Code の監視役です。");
-  if (a.status !== "working") lines.push("いまは作業中ではありません。");
+  const lines = [`「${who}」의 작업을 중단하시겠습니까? 중단 키를 전송하며 터미널은 유지됩니다.`];
+  if (isWatcher(a)) lines.push("⚠ T3 Code 감시 에이전트입니다.");
+  if (a.status !== "working") lines.push("현재 작업 중이 아닙니다.");
   return { text: lines.join("\n"), strong: isWatcher(a) };
 }
 export async function stopAgent(exec, a, answer, hc = "hc") {
   if (answer !== true) return { ok: true, called: false, calls: [] };
-  if (!a?.address || a.source !== "app") return { ok: false, called: false, error: "この物は App の端末ではないので止められません", calls: [] };
+  if (!a?.address || a.source !== "app") return { ok: false, called: false, error: "Herdr 터미널이 아니므로 중단할 수 없습니다", calls: [] };
   const calls = [{ cmd: hc, args: ["interrupt", a.address] }];
   try { const r = await exec(hc, calls[0].args); if (r && r.code) return { ok: false, called: true, error: String(r.stderr || r.stdout || `hc interrupt: ${r.code}`).slice(0, 200), calls }; }
   catch (e) { return { ok: false, called: true, error: String(e), calls }; }
@@ -248,7 +248,7 @@ export const isGenericTitle = (t, prog = "") => { const x = String(t ?? "").trim
 // ★85 (2) a room made by a COMMAND (herdr-app do space.new, hc run ...), not from the launch dialog, also takes the first agent's title as its name: but only a room that
 // APPEARS while we watch (never the rooms that were there when the office started) and only while its name is still the App's default (empty, a number,
 // "Space 3", "新しい部屋"...). A room the person named is never touched. `known`: Set of space ids seen so far (the first call only fills it); `auto`: as in roomRenames.
-export const isDefaultRoomName = (n) => { const x = String(n ?? "").trim(); return !x || /^\d+$/.test(x) || /^(space|workspace|ws|スペース|新しい部屋|新規スペース|new[ _-]?(space|room))[ _-]*\d*$/i.test(x) || isGenericTitle(x); };
+export const isDefaultRoomName = (n) => { const x = String(n ?? "").trim(); return !x || /^\d+$/.test(x) || /^(space|workspace|ws|スペース|新しい部屋|新規スペース|새 공간|new[ _-]?(space|room))[ _-]*\d*$/i.test(x) || isGenericTitle(x); };
 export function watchNewRooms(known, spaceList = [], auto, now = Date.now()) {
   const first = known.size === 0;
   for (const s of spaceList) {
@@ -275,24 +275,24 @@ export function roomRenames(auto, spaceList = [], list = [], now = Date.now()) {
 export function roomOps(space, live = true) {
   if (!live || !space?.id) return [];
   return [
-    { key: "show", label: "部屋を表示", cmd: "space.select", args: { id: space.id } },
-    { key: "rename", label: "名前を変える", cmd: "space.rename", args: { id: space.id } },
+    { key: "show", label: "공간 보기", cmd: "space.select", args: { id: space.id } },
+    { key: "rename", label: "이름 변경", cmd: "space.rename", args: { id: space.id } },
   ];
 }
 
 export function closeRoomQuestion(space, members = []) {
   const n = members.length, working = members.filter((a) => a?.status === "working").length;
-  const lines = [`部屋「${space?.name || space?.id}」を閉じますか？${n ? `中の ${n}人の端末も終わります。` : ""}`];
-  if (members.some(isWatcher)) lines.push("⚠ T3 Code の監視役がいます。");
-  if (working) lines.push(`⚠ ${working}人がいま作業中です。途中の作業は止まります。`);
-  lines.push("この操作は元に戻せません。");
+  const lines = [`공간 「${space?.name || space?.id}」을 닫으시겠습니까?${n ? ` 내부 터미널 ${n}개도 종료됩니다.` : ""}`];
+  if (members.some(isWatcher)) lines.push("⚠ T3 Code 감시 에이전트가 있습니다.");
+  if (working) lines.push(`⚠ ${working}명이 작업 중입니다. 진행 중인 작업이 중단됩니다.`);
+  lines.push("이 작업은 되돌릴 수 없습니다.");
   return { text: lines.join("\n"), strong: working > 0 || members.some(isWatcher) };
 }
 
 // Only "はい" (true) closes; the dialog already asked, so the App is told confirmed.
 export async function closeRoom(run, space, answer) {
   if (answer !== true) return { ok: true, called: false, calls: [] };
-  if (!space?.id) return { ok: false, called: false, error: "部屋が見つかりません", calls: [] };
+  if (!space?.id) return { ok: false, called: false, error: "공간을 찾을 수 없습니다", calls: [] };
   const calls = [{ cmd: "space.close", args: { id: space.id, confirmed: true } }];
   try { await run(calls[0].cmd, calls[0].args); } catch (e) { return { ok: false, called: true, error: String(e), calls }; }
   return { ok: true, called: true, calls };
@@ -302,8 +302,8 @@ export async function closeRoom(run, space, answer) {
 // ★107 `spaceList` (optional): a name a space already has is refused (the office names rooms by their name).
 export function newRoomPlan(form, spaceList = null) {
   const name = String(form?.name ?? "").trim(), folder = String(form?.folder ?? "").trim();
-  if (!name) return { ok: false, error: "部屋（スペース）の名前を入れてください", calls: [] };
-  if (Array.isArray(spaceList) && spaceList.some((s) => String(s?.name ?? "").trim() === name)) return { ok: false, error: "同じ名前の部屋があります。別の名前にしてください", calls: [] };
+  if (!name) return { ok: false, error: "공간 이름을 입력해 주세요", calls: [] };
+  if (Array.isArray(spaceList) && spaceList.some((s) => String(s?.name ?? "").trim() === name)) return { ok: false, error: "같은 이름의 공간이 있습니다. 다른 이름을 입력해 주세요", calls: [] };
   return { ok: true, calls: [{ cmd: "space.new", args: { name, ...(folder ? { folder } : {}) } }] };
 }
 // ★107 the folders offered when a space is made: the spaces' own folders first, then view.json's `recent` ({ name, folder }); one slash style, no repeats, `max` of them.
@@ -376,10 +376,10 @@ export function plateKeyFor(islands = [], room = null, current = null) {
 const inSpace = (a, spaceList) => !!(a?.space && spaceList.some((s) => s.name === a.space));
 
 export function moveToSpacePlan(a, target, spaceList = []) {
-  if (a?.source !== "app" || !a.address) return { ok: false, error: "App の端末だけ移せます", calls: [] };
+  if (a?.source !== "app" || !a.address) return { ok: false, error: "Herdr 터미널만 이동할 수 있습니다", calls: [] };
   const sp = spaceList.find((s) => s.id === target || s.name === target);
-  if (!sp) return { ok: false, error: "移す先のスペースが見つかりません", calls: [] };
-  if (a.space === sp.name) return { ok: false, error: "もうその部屋にいます", calls: [] };
+  if (!sp) return { ok: false, error: "이동할 공간을 찾을 수 없습니다", calls: [] };
+  if (a.space === sp.name) return { ok: false, error: "이미 해당 공간에 있습니다", calls: [] };
   const shown = spaceList.find((s) => s.active)?.id ?? null, calls = [];
   if (a.pane) calls.push({ cmd: "terminal.park", args: { terminal: a.address } }); // a sub-agent has no pane of its own: keep only
   calls.push({ cmd: "space.select", args: { id: sp.id } }, { cmd: "terminal.keep", args: { terminal: a.address, place: "tab" } });
@@ -409,7 +409,7 @@ export const agentMembers = (a, list = []) => teamMembers(a, list).filter((m) =>
 
 // ★95 "フリーへ" = to the real space "フリー" (moveToSpacePlan); when it is missing, make it first (`saveId`: runMovePlan keeps the new space's id for "$free").
 export function moveToFreePlan(a, spaceList = []) {
-  if (a?.source !== "app" || !a.address) return { ok: false, error: "App の端末だけ移せます", calls: [] };
+  if (a?.source !== "app" || !a.address) return { ok: false, error: "Herdr 터미널만 이동할 수 있습니다", calls: [] };
   const fs = spaceList.find((s) => s.name === FREE_NAME);
   if (fs) return moveToSpacePlan(a, fs.id, spaceList);
   const shown = spaceList.find((s) => s.active)?.id ?? null, calls = [];
@@ -426,12 +426,12 @@ export function moveToFreePlan(a, spaceList = []) {
 // The shown space never changes; a source space whose last pane is parked closes by itself (★85-1's rule, not ours). Do not clear the old
 // `where` label: the App writes the new one when it places the terminal. The target tab is the space's first tab (spaces() has the ids).
 export function moveByLabelPlan(a, target, spaceList = []) {
-  if (a?.source !== "app" || !a.address) return { ok: false, error: "App の端末だけ移せます", calls: [] };
+  if (a?.source !== "app" || !a.address) return { ok: false, error: "Herdr 터미널만 이동할 수 있습니다", calls: [] };
   const sp = spaceList.find((s) => s.id === target || s.name === target);
-  if (!sp?.id) return { ok: false, error: "移す先のスペースが見つかりません", calls: [] };
-  if (a.space === sp.name) return { ok: false, error: "もうその部屋にいます", calls: [] };
+  if (!sp?.id) return { ok: false, error: "이동할 공간을 찾을 수 없습니다", calls: [] };
+  if (a.space === sp.name) return { ok: false, error: "이미 해당 공간에 있습니다", calls: [] };
   const tabs = (sp.tabs ?? []).filter((t) => t?.id), tab = (tabs.find((t) => !t.settled) ?? tabs[0])?.id ?? null;
-  if (!tab) return { ok: false, error: "移す先のスペースにタブがありません", calls: [] };
+  if (!tab) return { ok: false, error: "이동할 공간에 탭이 없습니다", calls: [] };
   const calls = [];
   if (a.pane) calls.push({ cmd: "terminal.park", args: { terminal: a.address } });
   calls.push({ hc: ["label", a.address, `herdr.space=${sp.id}`, `herdr.tab=${tab}`] });
@@ -461,15 +461,15 @@ export function teamSpaceState(a, list = [], spaceList = []) {
 // before the rest are in. No space.select: the person's shown space never changes. Nothing is called here.
 export function teamFixPlan(a, list = [], spaceList = []) {
   const st = teamSpaceState(a, list, spaceList);
-  if (!st) return { ok: false, error: "チームはそろっています", calls: [] };
+  if (!st) return { ok: false, error: "팀이 이미 한곳에 있습니다", calls: [] };
   if (st.state === "auto") return moveByLabelPlan(a, st.target.id, spaceList);
   const lead = isFreeName(a?.space) ? FREE_NAME : String(a?.space ?? ""), sp = spaceList.find((s) => s.name === lead && s.id);
-  if (!sp) return { ok: false, error: "リーダーの部屋が見つかりません", calls: [] };
+  if (!sp) return { ok: false, error: "리더의 공간을 찾을 수 없습니다", calls: [] };
   const ms = agentMembers(a, list).filter((m) => (isFreeName(m.space) ? FREE_NAME : String(m.space ?? "")) !== lead)
     .sort((x, y) => (x.pane ? 1 : 0) - (y.pane ? 1 : 0));
   const calls = [];
   for (const m of ms) { const p = moveByLabelPlan(m, sp.id, spaceList); if (p.ok) calls.push(...p.calls); }
-  return calls.length ? { ok: true, calls } : { ok: false, error: "移せるワーカーがいません", calls: [] };
+  return calls.length ? { ok: true, calls } : { ok: false, error: "이동할 수 있는 작업자가 없습니다", calls: [] };
 }
 
 // ★103-5 the free space for everybody who is in no space. Why ★95 did not hold: it only changed the launch dialog and the drag, so a terminal
@@ -516,13 +516,13 @@ export function freeSweepPlan(list = [], spaceList = [], skip = new Set(), opts 
 
 // Runs a plan: App commands with `run`, herdr-core ones with `hc` (both swapped for fakes in the tests). A failure is returned, never thrown.
 export async function runMovePlan(run, hc, plan) {
-  if (!plan?.ok) return plan ?? { ok: false, error: "計画がありません", calls: [] };
+  if (!plan?.ok) return plan ?? { ok: false, error: "이동 계획이 없습니다", calls: [] };
   try {
     const saved = {}; // ★95 ids made by an earlier step ("$free" in a later step's args)
     for (const c of plan.calls) {
       if (c.args && Object.values(c.args).includes("$free")) c.args = Object.fromEntries(Object.entries(c.args).map(([k, v]) => [k, v === "$free" ? saved.free : v]));
       if (c.saveId && saved[c.saveId]) continue; // a team: the first member made it, the others go in
-      if (c.saveId) { const r = await run(c.cmd, c.args); saved[c.saveId] = r?.space ?? r?.id ?? null; if (!saved[c.saveId]) return { ok: false, error: "フリーのスペースを作れませんでした", calls: plan.calls }; continue; }
+      if (c.saveId) { const r = await run(c.cmd, c.args); saved[c.saveId] = r?.space ?? r?.id ?? null; if (!saved[c.saveId]) return { ok: false, error: "자유 공간을 만들지 못했습니다", calls: plan.calls }; continue; }
       if (c.hc) { const r = await hc(c.hc); if (r && r.code) return { ok: false, error: String(r.stderr || `hc ${c.hc[0]}: ${r.code}`).slice(0, 200), calls: plan.calls }; }
       else if (c.soft) { try { await run(c.cmd, c.args); } catch {} }
       else await run(c.cmd, c.args);

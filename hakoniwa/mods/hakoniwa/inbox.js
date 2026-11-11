@@ -12,8 +12,8 @@ import { inboxList, inboxFits, inboxHasMore, inboxWhat, inboxNeedsRead, inboxExt
 
 const open = (a, tab) => { if (tab) setShared("hakoniwa.tab", { id: a.id, tab, at: Date.now() }); setShared("hakoniwa.pick", { state: a.status, id: a.id, at: Date.now() }); };
 
-const link = (id, label, fn, tone = {}) => div().id(id).flex_none().h(32).px(10).flex().items_center().rounded(8).border(1).border_color(tone.border ?? P.line).bg(tone.bg ?? "#ffffff")
-  .text_size(14).font_weight(600).text_color(tone.color ?? P.ink).cursor_pointer().hover((s) => s.bg("#f3efe4")).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(label);
+const link = (id, label, fn, tone = {}) => div().id(id).flex_none().h(32).px(10).flex().items_center().rounded(8).border(1).border_color(tone.border ?? P.line).bg(tone.bg ?? P.paper)
+  .text_size(14).font_weight(600).text_color(tone.color ?? P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50")).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(label);
 
 // 14th D6: a report (報告あり) is a short row, 54px with the gap. Only a waiting card keeps the buttons (the big card).
 // 18th F5: two lines (name / one phrase) so the phrase has the width; the name is the person's own display name first. The room (or tab) is added after the name
@@ -21,15 +21,15 @@ const link = (id, label, fn, tone = {}) => div().id(id).flex_none().h(32).px(10)
 // 19th G3: the name is as wide as it is (cap 140 when a room follows, 200 alone) so the rest goes to the room; `tag` (the address) is given only to rows whose name and room both repeat (reportDupes).
 export function inboxRow(a, tag = "") {
   const st = stateOf(a), where = [reportWhere(a), reportModel(a)].filter(Boolean).join("・"); // 20th H6: the model (from the name's brackets) follows the room
-  return h_flex().id(`inbox-${a.id}`).w_full().flex_none().gap(8).px(12).py(3).items_center().rounded(10).bg("#eaf6ef").border(1).border_color("#b9dfca")
+  return h_flex().id(`inbox-${a.id}`).w_full().flex_none().gap(8).px(12).py(3).items_center().rounded(10).bg("#203c36").border(1).border_color("#3b715b")
     .child(dot(st.color, 10)).child(platformIcon(a, 15))
     .child(v_flex().flex_1().min_w(0)
       .child(h_flex().h(20).gap(6).items_center().min_w(0)
         .child(div().flex_none().max_w(where ? 140 : 200).truncate().text_size(15).font_weight(700).text_color(P.ink).child(reportName(a)))
         .when(!!where, (e) => e.child(div().flex_1().min_w(0).truncate().text_size(12).text_color(P.muted).child(where)))
         .when(!!tag, (e) => e.child(div().id(`inbox-tag-${a.id}`).flex_none().text_size(12).text_color("#b0aa9b").child(tag))))
-      .child(div().h(18).truncate().text_size(14).text_color(P.muted).child(String(a.title || "報告があります"))))
-    .child(link(`inbox-report-${a.id}`, "報告を見る", () => open(a, "chat")));
+      .child(div().h(18).truncate().text_size(14).text_color(P.muted).child(String(a.title || "보고가 있습니다"))))
+    .child(link(`inbox-report-${a.id}`, "보고 보기", () => open(a, "chat")));
 }
 
 // 35b 29-W4: the small line under the "what" line, in short Japanese from the what line that was read ("Create file（ファイルを作成） · bye.txt" -> "ファイルを作成: bye.txt").
@@ -38,23 +38,23 @@ export const inboxRawJa = (what, raw) => {
   const m = /^[^（）]+（([^（）]+)）(?: · (.+))?$/.exec(String(what ?? "").trim()), ja = m?.[1], rest = m?.[2];
   if (!ja) return String(raw ?? "");
   if (!rest) return ja;
-  return `${ja}: ${/ファイル/.test(ja) ? (rest.split(/[\\/]/).filter(Boolean).pop() ?? rest) : rest}`;
+  return `${ja}: ${/ファイル|파일/.test(ja) ? (rest.split(/[\\/]/).filter(Boolean).pop() ?? rest) : rest}`;
 };
 // 35b 29-W7: the pale line under the heading, only while somebody waits for approval. NOTE_H is its height (subtracted from the cap the cards fit in).
-export const INBOX_NOTE_TEXT = "承認待ちから先に答えてください", INBOX_NOTE_H = 18;
+export const INBOX_NOTE_TEXT = "승인 대기 항목부터 응답해 주세요", INBOX_NOTE_H = 18;
 
 export function inboxCard(part, a, tag = "") {
   const st = stateOf(a), waiting = a.status === "blocked", shown = shownRight(a, shared("hakoniwa.sel")), what = waiting ? inboxWhat(part.approvalEntry?.(a)) : "";
   // 26th M1: the person in the right window answers there; a second pair of buttons here only made people choose, so the card has none (33b U3: the 「右の窓に表示中」 mark alone says where).
   const btns = waiting && !shown ? part.approveButtons(a, { h: 36, idp: "inbox" }) : null;
   if (!waiting) return inboxRow(a, tag);
-  return v_flex().id(`inbox-${a.id}`).w_full().gap(6).px(12).py(10).rounded(10).bg(waiting ? "#fff1df" : "#eaf6ef").border(1).border_color(waiting ? "#f2c58a" : "#b9dfca")
+  return v_flex().id(`inbox-${a.id}`).w_full().gap(6).px(12).py(10).rounded(10).bg(waiting ? "#453527" : "#203c36").border(1).border_color(waiting ? "#a87a42" : "#3b715b")
     .child(h_flex().gap(8).items_center()
       .child(dot(st.color, 10)).child(platformIcon(a, 15))
       .child(div().flex_none().max_w(200).truncate().text_size(15).font_weight(700).text_color(P.ink).child(reportName(a))) // 20th H6: no model in brackets in the name
       .when(!!reportModel(a), (e) => e.child(div().flex_none().text_size(12).text_color(P.muted).child(reportModel(a))))
       .child(div().flex_1().min_w(0))
-      .when(shown, (e) => e.child(div().id(`inbox-shown-${a.id}`).flex_none().px(6).rounded(6).bg("#e3edff").text_size(12).font_weight(600).text_color(P.blue).child("右の窓に表示中"))) // 19th G5
+      .when(shown, (e) => e.child(div().id(`inbox-shown-${a.id}`).flex_none().px(6).rounded(6).bg("#243d5d").text_size(12).font_weight(600).text_color(P.blue).child("오른쪽 창에 표시 중"))) // 19th G5
       .child(div().flex_none().text_size(13).font_weight(600).text_color(st.color).child(`${st.label} ${ago(a.since)}`)))
     // 32b T3: when the dialog's own first line was read, it comes first and dark ("Create file（ファイルを作成） · bye.txt"); the raw "approve Write: <path>" line follows, small and pale and cut
     // to one line. Without it (not read yet) the raw line stays first as before (nothing to put in front).
@@ -62,18 +62,18 @@ export function inboxCard(part, a, tag = "") {
     // under it is shown only when the Japanese could not be read (then the what line stays as it was and the raw line follows).
     .when(waiting && !!what, (e) => e.child(div().id(`inbox-what-${a.id}`).truncate().text_size(14).font_weight(600).text_color(P.ink).child(inboxRawJa(what, what)))) // 24th Q4: what is asked, the dialog's own first line (only when it was read)
     .when(waiting && !!what && inboxRawJa(what, "") === "", (e) => e.child(div().id(`inbox-raw-${a.id}`).truncate().text_size(12).text_color("#b0aa9b").child(String(blockedText(a)))))
-    .when(!(waiting && what), (e) => e.child(div().text_size(14).text_color(P.ink).child(waiting ? String(blockedText(a)) : String(a.title || a.name || "報告があります"))))
+    .when(!(waiting && what), (e) => e.child(div().text_size(14).text_color(P.ink).child(waiting ? String(blockedText(a)) : String(a.title || a.name || "보고가 있습니다"))))
     .when(!!btns, (e) => e.child(btns))
     // 33b U3 (27-U3): the person shown in the right window has only the 「右の窓に表示中」 mark in the header: no buttons, no 「その人を開く」, no answer-here button (the mark already says where to answer)
     .when(!shown, (e) => e.child(h_flex().gap(8) // 20th H3: the person already in the right window has no 「その人を開く」
-      .child(link(`inbox-open-${a.id}`, "その人を開く", () => open(a)))));
+      .child(link(`inbox-open-${a.id}`, "에이전트 열기", () => open(a)))));
 }
 
 // 13th B5: the window is capped at the screen / right window's height, so when many cards wait the list scrolls and the last one is cut at the bottom.
 // A fixed line under the scroll area says so (the scrollbar alone did not tell). 14th D6: inboxFits (approve.js) counts a waiting card as 120px and a report as 54px, the numbers room.js sizes the window with.
 
 // 24th Q3: where the kind of cards changes (the pressed kind first, then the other), a pale heading names the kind that follows ("報告あり 2"); one kind only -> no heading.
-export const inboxDividerText = (rows, i) => (i > 0 && rows[i]?.status !== rows[i - 1]?.status ? (rows[i].status === "blocked" ? "承認待ち" : "報告あり") : "");
+export const inboxDividerText = (rows, i) => (i > 0 && rows[i]?.status !== rows[i - 1]?.status ? (rows[i].status === "blocked" ? "승인 대기" : "작업 보고") : "");
 const inboxDivider = (text) => div().id(`inbox-divider-${text}`).flex_none().h(16).px(2).flex().items_center().text_size(12).font_weight(600).text_color("#b0aa9b").child(text);
 
 export function inboxView(part) {
@@ -108,15 +108,15 @@ export function inboxView(part) {
   const measure = (key) => (size, cx) => { const v = Math.round(size?.height ?? 0); part.inboxMeasure ??= {}; if (v > 0 && part.inboxMeasure[key] !== v) { part.inboxMeasure[key] = v; cx?.notify?.(); } fill(cx); };
   return v_flex().id("inbox-root").size_full().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .child(h_flex().flex_none().px(14).pt(12).pb(6).gap(8).items_center()
-      .child(div().text_size(17).font_weight(700).text_color(P.ink).child("対応が必要"))
+      .child(div().text_size(17).font_weight(700).text_color(P.ink).child("확인 필요"))
       .child(div().text_size(14).font_weight(700).text_color(rows.length ? STATE.blocked.color : P.muted).child(String(rows.length)))
       .when(kinds.length > 0, (e) => e.child(h_flex().id("inbox-kinds").gap(6).items_center() // 5th X2: the total = the two header chips added up; 19th K5: the pressed kind first and darker
-        .children(kinds.map((k, i) => div().text_size(12).font_weight(i === 0 ? 700 : 400).text_color(i === 0 ? STATE[k]?.color ?? P.ink : P.muted).child(`${k === "blocked" ? "承認待ち" : "報告あり"} ${nOf(k)}`)))))
+        .children(kinds.map((k, i) => div().text_size(12).font_weight(i === 0 ? 700 : 400).text_color(i === 0 ? STATE[k]?.color ?? P.ink : P.muted).child(`${k === "blocked" ? "승인 대기" : "작업 보고"} ${nOf(k)}`)))))
       .child(div().flex_1())
       .child(iconBtn("inbox-close", "x", () => { setShared("hakoniwa.inboxOpen", { on: false, at: Date.now() }); const o = props()?.overlay; if (o != null) closeOverlay(o); }, { size: 36, isize: 20 })))
     .when(note, (e) => e.child(div().id("inbox-note").flex_none().h(INBOX_NOTE_H).px(14).flex().items_center().text_size(12).text_color(P.muted).child(INBOX_NOTE_TEXT))) // 35b 29-W7; 36b 30-X3: one step darker (was #b0aa9b)
     .child(div().id("inbox-scroll").flex_1().min_h(0).overflow_y_scrollbar().on_size_change(measure("view"))
       .child(v_flex().gap(8).px(14).pb(12).on_size_change(measure("content"))
-        .children(rows.length ? rows.flatMap((a, i) => [...(inboxDividerText(rows, i) ? [inboxDivider(inboxDividerText(rows, i))] : []), inboxCard(part, a, dupes.has(a.id) ? reportTag(a) : "")]) : [div().py(16).text_size(14).text_color(P.muted).child("いま対応が必要な人はいません")])))
-    .when(more, (e) => e.child(div().id("inbox-more").flex_none().px(14).py(6).border_t(1).border_color(P.line).bg(P.paper).text_size(14).font_weight(600).text_color(P.muted).child(`↓ 続きあり。下にスクロール（全 ${rows.length} 件）`)));
+        .children(rows.length ? rows.flatMap((a, i) => [...(inboxDividerText(rows, i) ? [inboxDivider(inboxDividerText(rows, i))] : []), inboxCard(part, a, dupes.has(a.id) ? reportTag(a) : "")]) : [div().py(16).text_size(14).text_color(P.muted).child("확인이 필요한 항목이 없습니다")])))
+    .when(more, (e) => e.child(div().id("inbox-more").flex_none().px(14).py(6).border_t(1).border_color(P.line).bg(P.paper).text_size(14).font_weight(600).text_color(P.muted).child(`↓ 아래로 스크롤해 더 보기 (전체 ${rows.length}건)`)));
 }

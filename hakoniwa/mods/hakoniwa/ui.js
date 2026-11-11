@@ -13,10 +13,10 @@ import { RIGHT_HEAD, UI } from "./ui-rules.js";
 export function iconBtn(id, name, fn, opts = {}) {
   const box = opts.size ?? 24, col = opts.disabled ? "#c3beb1" : opts.red ? "#d6455d" : opts.color ?? P.muted;
   // 5th X7: opts.frame = a thin frame always on (the button looks pressable), a darker fill on hover (the "⋯" of the left list)
-  const el = h_flex().id(id).flex_none().w(box).h(box).items_center().justify_center().rounded(6).when(!!opts.active, (e) => e.bg("#e8f0fe")).when(!!opts.frame && !opts.disabled, (e) => e.border(1).border_color("#d9d3c4").bg("#faf8f2"))
+  const el = h_flex().id(id).flex_none().w(box).h(box).items_center().justify_center().rounded(6).when(!!opts.active, (e) => e.bg("#243d5d")).when(!!opts.frame && !opts.disabled, (e) => e.border(1).border_color("#3b4b60").bg("#253247"))
     .when(!!opts.tip, (e) => e.tooltip(String(opts.tip))) // ★107 W8: opts.tip = the pointer's tooltip (what the icon does)
     .child(icon(name, opts.isize ?? 14, col));
-  return opts.disabled ? el : el.cursor_pointer().hover((s) => s.bg(opts.red ? "#FDE8E8" : opts.frame ? "#e6e2d8" : "#f0ede4")).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+  return opts.disabled ? el : el.cursor_pointer().hover((s) => s.bg(opts.red ? "#472c36" : opts.frame ? "#3b4b60" : "#253449")).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .on_click((_e, cx) => { cx.stop_propagation(); fn(cx); });
 }
 // Tabs with a line under the chosen one. items: [{ key, label, icon?, count? }].
@@ -41,15 +41,15 @@ export function tabs(id, items, value, fn, opts = {}) {
 }
 // The "⋯" menu: items [{ id, label, fn, danger }], the danger ones (end) in red.
 export function menuList(id, items) {
-  return v_flex().id(id).w(176).p(4).gap(1).rounded(10).bg("#ffffff").border(1).border_color(P.line)
+  return v_flex().id(id).w(176).p(4).gap(1).rounded(10).bg("#1b2637").border(1).border_color(P.line)
     .children(items.map((it) => div().id(`${id}-${it.id}`).px(10).py(6).rounded(6).text_size(UI.text.small).text_color(it.danger ? "#d6455d" : P.ink).cursor_pointer()
-      .hover((s) => s.bg(it.danger ? "#FDE8E8" : "#f3efe4")).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .hover((s) => s.bg(it.danger ? "#472c36" : "#2b3b50")).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => { cx.stop_propagation(); it.fn(cx); }).child(it.label)));
 }
 // The in-place rename: the input (the current name is in it from the start: the caller made the InputState with it) + ✓ and ×. Enter / Esc too.
 // ★96-2: ONE look for the rename input on both sides (framed, white, the text size of the name it replaces, ✓ and ×). `size` = that text size (12 list, 16 right column).
 export function inlineRename(id, state, ok, cancel, size = 12) {
-  return h_flex().id(id).flex_1().min_w(0).gap(4).items_center().px(6).py(2).rounded(7).border(1).border_color(P.blue).bg("#ffffff").text_size(size)
+  return h_flex().id(id).flex_1().min_w(0).gap(4).items_center().px(6).py(2).rounded(7).border(1).border_color(P.blue).bg("#1b2637").text_size(size)
     .on_key_down((e, cx) => { if (e.key === "enter") { ok(cx); cx.stop_propagation(); } else if (e.key === "escape") { cancel(cx); cx.stop_propagation(); } })
     .child(div().flex_1().min_w(0).text_size(size).child(Input.new(state)))
     .child(iconBtn(`${id}-ok`, "check", ok, { size: UI.hit, color: "#27AE60" })).child(iconBtn(`${id}-no`, "x", cancel, { size: UI.hit }));

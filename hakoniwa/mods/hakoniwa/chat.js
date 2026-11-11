@@ -1,6 +1,6 @@
 // hakoniwa conversation (role "chat" window, and the Office side panel). Mixed into AgentHud.
 import { div, image } from "gpui-kit";
-import { h_flex, v_flex, InputState } from "gpui-base";
+import { h_flex, v_flex, InputState, ScrollHandle } from "gpui-base";
 import { appHome, closeOverlay, exec, openOverlay, props, readTextFile, run, setShared, settings, shared, writeTextFile } from "herdr";
 // 13th B1/B6: `window` here is the ambient gpui Window (viewport_size / bounds). fix11b imported `window` from "herdr" (a function: titlebar info) which hid it, so viewport_size() threw on every call and the
 // code fell back to left.width+268 (= 2188 wide): the right window was asked for x=1313 w=875, i.e. 268px past the screen edge (bubbles / the send button cut at x=1920). Never import `window` from "herdr" here.
@@ -8,16 +8,17 @@ const vpSize = () => { try { const v = globalThis.window?.viewport_size?.(); ret
 const winBounds = () => { try { const b = globalThis.window?.bounds?.(); return b && b.width > 0 ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null; } catch { return null; } };
 import { rightOverlayBox, RIGHT_EDGE, RIGHT_COLLAPSED_W, RIGHT_WIN_FRAME, STATE, ROOM, P, dot, chip, badge, clock, ago, platform, platformIcon, stateOf, blockedText } from "./common.js";
 import { fitTail, unwrapHc } from "./life.js";
-import { tabFor } from "./detail.js";
+import { tabFor, latestReplyExcerpt } from "./detail.js";
 import { headHeight } from "./ui-rules.js";
 import { fitScreenLines, stripTerminalFrame } from "./tool-lines.js";
 import { iconBtn } from "./ui.js";
 import { icon } from "./icons.js";
 import { endAgent, endQuestion, runAgentOps } from "./actions.js";
+import { screenHighlights, screenLineKind } from "./screen-highlights.js";
 
 // Long unbroken text (paths, commands) gets break points so it wraps inside the panel instead of running off it.
 const ZW = "​";
-const imgLine = (t) => String(t ?? "").replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, (_m, u) => `画像: ${String(u).split(/[\\/]/).pop().split("?")[0] || u}`); // a picture in Markdown: one short line, no thumbnail
+const imgLine = (t) => String(t ?? "").replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, (_m, u) => `이미지: ${String(u).split(/[\\/]/).pop().split("?")[0] || u}`); // a picture in Markdown: one short line, no thumbnail
 const soft = (t) => imgLine(String(t ?? "")).replace(/([/\\_,&|;=-])(?=\S)/g, "$1" + ZW).replace(/(\S{24})(?=\S)/g, "$1" + ZW);
 
 // 17th E4 (office-fix17b): the card measured on the real window (12th, 1920x1152): 126 px high with a one-line ask (the block was 176: ~42 px of empty paper under the card).
@@ -66,7 +67,7 @@ function tailOf(m, width, avail, force) {
   for (let i = lines.length - 1; i >= 0; i--) { const k = Math.max(1, Math.ceil(convWidthOf(lines[i]) / inner)); if (keep.length && n + k > use) break; keep.unshift(lines[i]); n += k; }
   if (keep.length === 1 && n > use) { const t = [...keep[0]]; keep[0] = t.slice(Math.max(0, t.length - Math.floor(inner / CONV.narrow) * use)).join(""); n = use; }
   const left = Math.max(1, total - n);
-  return { ...m, text: `… 前の ${left} 行\n${keep.join("\n")}` };
+  return { ...m, text: `… 앞의 ${left}줄 생략\n${keep.join("\n")}` };
 }
 export function fitConversation(msgs, width, height, back = 0) {
   const all = Array.isArray(msgs) ? msgs : [], budget = Math.max(CONV.line * 4, Number(height) || 0) * (1 + Math.max(0, back | 0)) - CONV.older;
@@ -82,12 +83,13 @@ export function fitConversation(msgs, width, height, back = 0) {
 
 export class ChatPart {
   initChat(cx) {
+    if (props()?.role === "chat") { this.detailScroll = ScrollHandle.new(); this.detailScrolled = false; }
     // 34th 34-B4: a window opened again at a change of state (the approval answered) is a new copy with no data, so it drew only 「読み込み中…」 for a moment. The last read of the same person (shared, under 2 min old) is kept on screen until the new read lands.
     let seed = null; try { const cc = shared("hakoniwa.chatcache"), pid = (this.bodyProps?.() ?? props())?.id; if (cc?.data && pid && cc.id === pid && Date.now() - (cc.at ?? 0) < 120000) { seed = cc.data; this.seedBlocked = cc.st === "blocked"; } } catch {} // 41st 39-G1 (office-fix46a): st = whether the person waited for approval when that screen was read
     this.chat = { loading: true, data: seed };
     if (seed && (this.bodyProps?.() ?? props())?.role === "chat-body") this.traceChat({ ev: "seed", id: (this.bodyProps?.() ?? props())?.id, seedBlocked: !!this.seedBlocked, seedAt: shared("hakoniwa.chatcache")?.at ?? null });
-    try { this.msgState = InputState.new({ placeholder: "メッセージ、またはコマンドを入力…" }); } catch { this.msgState = null; } // ★105 R8 the composer's input (made here, never in render)
-    try { this.rejectState = InputState.new({ placeholder: "却下の理由（任意）…" }); } catch { this.rejectState = null; } // 24th Q2: the same input while the person waits for approval (InputState has no way to change a placeholder later, so a second state)
+    try { this.msgState = InputState.new({ placeholder: "메시지 또는 명령 입력…" }); } catch { this.msgState = null; } // ★105 R8 the composer's input (made here, never in render)
+    try { this.rejectState = InputState.new({ placeholder: "거부 사유 (선택)…" }); } catch { this.rejectState = null; } // 24th Q2: the same input while the person waits for approval (InputState has no way to change a placeholder later, so a second state)
     this.chatStartAt = Date.now(); // 43rd 41-I4: when this copy began (detail.js draws 「読み込み中…」 instead of the start-up banner for its first ~3 s while the screen is not yet a conversation)
     // 43rd 41-I2 (office-fix48a): a copy opened FOR a waiting person (props ap === 1, a seed read while it waited, or the card block itself) is a new copy that never saw the switch to "waiting", so the
     // watch below never logs blocked-in for it and the buttons came ~3.5 s late. It reads the state, the screen and the card's options once, at its start (logged as blocked-in with fromInit).
@@ -127,7 +129,7 @@ export class ChatPart {
     // ★111 Y1 (office-fix8a): the window's conversation (chat-body) was read once at start and never again, so the 2nd and later turns never showed (only the
     // region's rchat watched the person's state). Here: read again when the person's id|status|since changes (a new turn / answer), and every ~5s while
     // the person is working (a long turn adds lines without a state change). Quiet: the old lines stay on screen, no "読み込み中" flash.
-    if (props()?.role === "chat-body") this.watchChat(cx);
+    if (props()?.role === "chat-body" || props()?.role === "chat") this.watchChat(cx);
   }
 
   // 33rd 32-Z1: a window opened again at a change of state has not read the list for its first ~1.5 s, so the person is "not found" at first. MISS_GRACE ms of that are drawn blank (no reason, no id);
@@ -181,28 +183,39 @@ export class ChatPart {
   chatView() {
     const p = props(), d = this.chat?.data, room = ROOM[p.source] ?? { title: p.source, color: P.muted };
     const btn = (id, label, fn) => div().id(id).flex_none().px(9).py(4).rounded(5).border(1).border_color(P.line)
-      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg("#f1f3f6")).on_click(fn).child(label);
-    const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg("#fafbfc").border_b(1).border_color(P.line)
+      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click(fn).child(label);
+    const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg("#1b2637").border_b(1).border_color(P.line)
       .child(badge(room.title, room.color, true))
       .child(platformIcon(p, 14))
       .child(v_flex().flex_1().min_w(0)
         .child(div().text_size(13).font_weight(700).text_color(P.ink).truncate().child(p.name ?? p.id))
         .child(h_flex().gap(4).items_center().child(chip(p.color ?? P.muted, 8))
-          .child(div().text_size(10).text_color(P.muted).child(p.model ?? "モデル不明"))))
-      .child(btn("chat-reload", "再読込", (_e, cx) => cx.spawn(async (cx) => this.loadChat(cx))))
-      .when(p.source === "app", (el) => el.child(btn("chat-open", "端末を開く", () => run("agent.focus", { terminal: p.address }))))
-      .child(btn("chat-close", "閉じる", () => closeOverlay(p.overlay)));
-    let body;
-    if (this.chat?.loading && !d) body = div().p(16).text_size(12).text_color(P.muted).child("読み込み中…");
-    else if (d?.error && !(d.messages?.length || d.screen)) body = div().p(16).text_size(12).text_color("#d6455d").child(String(d.error ?? ""));
-    else if (d?.kind === "screen") body = div().p(12).text_size(11).text_color(P.ink)
-      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "（画面が空です）")); // 28th 27-U1/U2
-    else body = v_flex().gap(8).p(12).children((d?.messages ?? []).slice().reverse().map((m, i) => this.message(m, i)));
+          .child(div().text_size(10).text_color(P.muted).child(p.model ?? "모델 미확인"))))
+      .child(btn("chat-reload", "새로고침", (_e, cx) => cx.spawn(async (cx) => this.loadChat(cx))))
+      .when(p.source === "app", (el) => el.child(btn("chat-open", "터미널 열기", () => run("agent.focus", { terminal: p.address }))))
+      .child(btn("chat-close", "닫기", () => closeOverlay(p.overlay)));
+    const screen = d?.kind === "screen" ? String(stripTerminalFrame(d.screen).text || "(화면이 비어 있습니다)") : "";
+    const highlights = screenHighlights(screen);
+    const excerpt = d?.kind === "messages" ? latestReplyExcerpt(d.messages) : "";
+    let rows;
+    if (this.chat?.loading && !d) rows = [div().p(16).text_size(12).text_color(P.muted).child("불러오는 중…")];
+    else if (d?.error && !(d.messages?.length || d.screen)) rows = [div().p(16).text_size(12).text_color("#d6455d").child(String(d.error ?? ""))];
+    else if (d?.kind === "screen") rows = screen.split(/\r?\n/).map((line) => { const kind = screenLineKind(line); return div().w_full().px(12).text_size(12).font_family(settings().font_family ?? "Consolas").text_color(kind === "request" ? "#9bc9ff" : kind === "action" ? "#69d5c7" : P.ink).when(kind !== "text", (el) => el.font_weight(700).bg("#253449")).child(line || " "); });
+    else rows = (d?.messages ?? []).map((m, i) => this.message(m, i));
+    if (!rows.length) rows = [div().p(12).text_color(P.muted).child("표시할 내용이 없습니다")];
+    const last = rows.length;
+    rows.push(div().id(d ? "chat-end-ready" : "chat-end-loading").flex_none().h(1).on_size_change((_size, cx) => { if (d && !this.detailScrolled) { this.detailScrolled = true; this.detailScroll?.scroll_to_item(last); cx.notify(); } }));
     return v_flex().id("chat-root").size_full().bg(P.white)
       .child(head)
-      .child(div().flex_none().px(14).py(4).text_size(10).text_color(P.muted).bg("#fcfcfd").border_b(1).border_color(P.line)
-        .child(d?.kind === "screen" ? "会話の記録が無いため、端末の画面を表示しています" : "新しい順（上が最新）"))
-      .child(div().id("chat-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body));
+      .child(div().flex_none().px(14).py(4).text_size(10).text_color(P.muted).bg("#1b2637").border_b(1).border_color(P.line)
+        .child(d?.kind === "screen" ? "터미널 화면에서 최근 내용을 발췌합니다" : "시간순 (아래가 최신)"))
+      .when(!!(highlights.request || highlights.action), (el) => el.child(v_flex().px(14).py(6).gap(3).bg("#243d5d")
+        .when(!!highlights.request, (x) => x.child(div().text_size(12).text_color(P.ink).child(`최근 요청: ${highlights.request}`)))
+        .when(!!highlights.action, (x) => x.child(div().text_size(12).text_color(P.ink).child(`최근 작업: ${highlights.action}`)))))
+      .when(!!excerpt, (el) => el.child(v_flex().px(14).py(6).gap(3).bg("#243d5d")
+        .child(div().text_size(12).font_weight(700).text_color(P.blue).child("최근 응답 발췌"))
+        .child(div().text_size(12).text_color(P.ink).child(excerpt))))
+      .child(v_flex().id("chat-scroll").flex_1().min_h(0).gap(4).overflow_y_scrollbar().track_scroll(this.detailScroll).children(rows));
   }
 
   // 10th A2: the shared "hakoniwa.termBox" is the OUTER box of the right column (its left edge is what the popups keep clear of). Region mode never wrote it, and the value
@@ -314,7 +327,7 @@ export class ChatPart {
     const vp = vpSize();
     const vw = vp?.width > 0 ? vp.width : left.width + 268, vh = vp?.height > 0 ? vp.height : left.height + 60; // the window's real size (the office's own size + the sidebar only as a fallback)
     const colW = !!this.rightCollapsed, bx = rightOverlayBox(vw, vh, 60, colW ? RIGHT_COLLAPSED_W : (this.rightW ?? Math.round(left.width * 0.46)), this.rightW ? 0.6 : 0.4, RIGHT_EDGE), W = colW ? RIGHT_COLLAPSED_W : bx.width, H = Math.min(bx.height, Math.max(240, Math.round(left.height))); // ★103-3 attached; ★103-4 folded
-    if (this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "chat"; } // ★84 another person: the first tab again; ★106 V1: the conversation
+    if (this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "terminal"; }
     const kidsN = this.familyRows(want, list).length - 1, tab = tabFor(this.detailTab, true, kidsN), topH = headHeight(W), ap = tab === "chat" && want.status === "blocked", apH = ap ? this.apHold(want.id, W, this.apNeed(want, W)) : (this.apHold(null), 0), sig = `${want.id}|${want.address}|${topH}|${tab}|${W}|${colW}|${ap ? "ap" + apH : ""}`; // 13th D1: ap = a person waiting for approval gets a card block above the input (the window is opened again when it starts / ends) // ★84 the head is a fixed height from the width; the tab is in the key (the window is opened again)
     if (this.termKey === sig) { this.measuredBox(); return true; }
     // 34th 33-A4 (office-fix39b): what changed in the key at each re-open is written to right-edge-diag.json ("window-reopen": n, changed, from, to). An apH-only change while the card is
@@ -381,15 +394,15 @@ export class ChatPart {
     const sig = `${a.id}|${a.status}|${a.since}`;
     if (this.panel?.sig === sig || this.panel?.loading || !this.feed.config) return;
     if (shared("hakoniwa.demo") || this.feed.config?.demo) { // demo: nothing to read
-      const now = Date.now(), nm = a.name || "作業";
+      const now = Date.now(), nm = a.name || "작업";
       const min = (n) => now - n * 60000;
-      const rows = [{ role: "user", at: min(12), text: `「${nm}」を進めてください` },
-        { role: "assistant", at: min(11), text: "まず関連するファイルを確認します。" },
-        { role: "tool", at: min(10), text: "関連ファイルを確認" }];
-      if (a.status === "blocked") rows.push({ role: "assistant", at: min(4), text: `次の操作を実行してよいですか: ${a.blocked_msg || "確認が必要です"}` });
-      else if (a.status === "done") rows.push({ role: "tool", at: min(3), text: "テストを実行" }, { role: "assistant", at: min(2), text: "作業が終わりました。結果を報告します。" });
-      else if (a.status === "working") rows.push({ role: "assistant", at: min(5), text: "修正を進めています。終わったらテストを流します。" }, { role: "tool", at: min(2), text: "ファイルを編集" });
-      else rows.push({ role: "assistant", at: min(6), text: "完了しました。次の指示を待っています。" });
+      const rows = [{ role: "user", at: min(12), text: `「${nm}」 작업을 진행해 주세요` },
+        { role: "assistant", at: min(11), text: "먼저 관련 파일을 확인합니다." },
+        { role: "tool", at: min(10), text: "관련 파일 확인" }];
+      if (a.status === "blocked") rows.push({ role: "assistant", at: min(4), text: `다음 작업을 실행해도 될까요: ${a.blocked_msg || "확인이 필요합니다"}` });
+      else if (a.status === "done") rows.push({ role: "tool", at: min(3), text: "테스트 실행" }, { role: "assistant", at: min(2), text: "작업을 마쳤습니다. 결과를 보고합니다." });
+      else if (a.status === "working") rows.push({ role: "assistant", at: min(5), text: "수정 중입니다. 완료 후 테스트합니다." }, { role: "tool", at: min(2), text: "파일 수정" });
+      else rows.push({ role: "assistant", at: min(6), text: "완료했습니다. 다음 지시를 기다립니다." });
       this.panel = { sig, id: a.id, loading: false, data: { messages: rows } }; // a made-up conversation that fits this agent
       return;
     }
@@ -463,7 +476,7 @@ export class ChatPart {
       this.detMissAt ??= Date.now();
       if (!this.detMissLogged) { this.detMissLogged = true; try { this.traceApprove?.({ ev: "detail-miss", id: p.id ?? null, n: list.length, ids: list.map((x) => x.id).slice(0, 8), live: list.filter((x) => x.live).length, feedLoaded: !!this.feed?.state, name: p.name ?? null }); } catch {} } // 46th 44-L3: the id looked for next to the ids of the list (feedLoaded = the collector's state is read in this copy; live = rows of the live overlay)
       const over = Date.now() - this.detMissAt >= MISS_GRACE;
-      return v_flex().size_full().bg(P.paper).child(over ? div().p(16).text_size(14).text_color(P.muted).child("このエージェントは見つかりません") : list.length ? div() : div().p(16).text_size(14).text_color(P.muted).child("読み込み中…"));
+      return v_flex().size_full().bg(P.paper).child(over ? div().p(16).text_size(14).text_color(P.muted).child("에이전트를 찾을 수 없습니다") : list.length ? div() : div().p(16).text_size(14).text_color(P.muted).child("불러오는 중…"));
     }
     this.detMissAt = null; this.detMissLogged = false;
     const tab = tabFor(p.tab, true, this.familyRows(a, list).length - 1); // ★84 head + tabs; the body under it is the window's next block
@@ -477,7 +490,7 @@ export class ChatPart {
     // ★103-3 (2nd) a press on the head never drags the window (attached). ★105 N6: the same swallowed-by-comment slip (the border was lost)
     return h_flex().id("pick-head-root").size_full().px(14).gap(10).items_center().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_b(1).border_color(P.line)
       .child(div().flex_1().min_w(0).truncate().text_size(16).font_weight(700).text_color(P.ink).child(p.name ?? ""))
-      .child(div().flex_none().px(8).py(3).rounded(6).bg("#e7e5df").text_size(13).font_weight(700).text_color("#7a766b").child("シェル"))
+      .child(div().flex_none().px(8).py(3).rounded(6).bg("#334155").text_size(13).font_weight(700).text_color("#c2cede").child("셸"))
       .child(iconBtn("pick-fold", "right", () => setShared("hakoniwa.rcollapse", { on: true, at: Date.now() }), { size: 36, isize: 20 })) // ★103-4 fold to the edge
       .child(iconBtn("pick-close", "x", () => { setShared("hakoniwa.close", { at: Date.now() }); }, { size: 36, isize: 20 })); // ★104 U13: × as an icon, like the agent head
   }
@@ -487,8 +500,8 @@ export class ChatPart {
     // ★103-3 (2nd) a press on the head never drags the window (attached). ★105 N6: the same swallowed-by-comment slip (the border was lost)
     return v_flex().id("detail-folded").size_full().items_center().py(10).gap(12).bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_l(1).border_color(P.line)
       .child(iconBtn("unfold-btn", "left", () => slide.collapse(false), { size: 36, isize: 20 }))
-      .child(div().flex_none().text_size(14).text_color(P.muted).child("開く")) // ★104 U2: the arrow alone does not say what it does
-      .child(a ? this.face(a, 32, p.face) : div().flex_none().w(32).h(32).rounded(8).bg("#e7e5df"))
+      .child(div().flex_none().text_size(14).text_color(P.muted).child("열기")) // ★104 U2: the arrow alone does not say what it does
+      .child(a ? this.face(a, 32, p.face) : div().flex_none().w(32).h(32).rounded(8).bg("#334155"))
       .child(iconBtn("folded-close", "x", (cx) => slide.close(cx), { size: 36, isize: 20 }));
   }
 
@@ -498,11 +511,11 @@ export class ChatPart {
       .text_size(13).font_weight(700).text_color(fill ? "#ffffff" : color).cursor_pointer().hover((s) => s.opacity(0.85)).on_click(fn).child(label);
     const yes = () => { if (p.action) this.confirmYes(p); else endAgent(run, { address: p.address, source: p.source }, true); closeOverlay(p.overlay); }; // ★61-1 room-close / stop: room.js
     return v_flex().id("confirm-root").size_full().p(18).gap(14).bg(P.paper).overflow_hidden() // ★95-7: a long question scrolls; the buttons stay
-      .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child(p.title ?? "セッションを終える"))
+      .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child(p.title ?? "세션 종료"))
       .child(div().id("confirm-scroll").flex_1().min_h(0).overflow_y_scrollbar().text_size(13).text_color(p.strong ? "#b3261e" : P.ink).child(String(p.text ?? "")))
       .child(h_flex().flex_none().gap(10).justify_end()
-        .child(btn("confirm-no", "いいえ", () => closeOverlay(p.overlay), P.line))
-        .child(btn("confirm-yes", p.yes ?? "はい、終える", yes, "#d6455d", "#d6455d")));
+        .child(btn("confirm-no", "아니요", () => closeOverlay(p.overlay), P.line))
+        .child(btn("confirm-yes", p.yes ?? "네, 종료", yes, "#d6455d", "#d6455d")));
   }
 
   // `slide`: { width (the Office's width), open, close() }. The panel is an overlay that slides in from the right.
@@ -523,28 +536,28 @@ export class ChatPart {
           if (t && t.id !== id) slide.select(t, cx); cx.stop_propagation();
         }
       });
-    if (!a) return frame.child(h_flex().flex_none().px(16).pt(14).pb(10).items_center().child(div().flex_1().text_size(17).font_weight(700).text_color(P.ink).child("エージェント詳細")));
+    if (!a) return frame.child(h_flex().flex_none().px(16).pt(14).pb(10).items_center().child(div().flex_1().text_size(17).font_weight(700).text_color(P.ink).child("에이전트 상세")));
     const d = this.panel?.id === a.id ? this.panel.data : null, loading = this.panel?.loading, msgs = d?.messages ?? [], plat = platform(a);
     const kidsN = this.familyRows(a, list).length - 1, tab = tabFor(this.detailTab, false, kidsN), rows = this.familyRows(a, list); this.treeOrder = rows.length > 1 ? rows.map(([n]) => n.id) : [];
     const parts = this.detailHead(a, list, slide, { width: W, tab, hasTerminal: false, onTab: (k, cx) => { this.detailTab = k; cx.notify(); } }); // ★84
     const room = Math.max(120, (slide.height ?? 560) - headHeight(W) - 12);
     let body;
-    if (loading && !d) body = div().p(12).text_size(12).text_color(P.muted).child("読み込み中…");
+    if (loading && !d) body = div().p(12).text_size(12).text_color(P.muted).child("불러오는 중…");
     else if (d?.error && !(msgs.length || d.screen)) body = div().p(12).text_size(12).text_color(/デモ/.test(d.error) ? P.muted : "#d6455d").child(String(d.error ?? ""));
     else if (d?.kind === "screen") body = div().p(12).text_size(11).text_color(P.ink)
-      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "（画面が空です）")); // 28th 27-U1/U2
+      .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "(화면이 비어 있습니다)")); // 28th 27-U1/U2
     else if (tab === "tree") body = v_flex().p(10).gap(2).children(rows.map(([n, depth]) => { const ks = stateOf(n), me = n.id === a.id;
-      return h_flex().id(`tree-${n.id}`).gap(6).px(6).py(4).items_center().rounded(7).cursor_pointer().hover((e) => e.bg("#f3efe4")).when(me, (e) => e.bg("#e8f0fe")).on_click((_e, cx) => slide.select(n, cx))
+      return h_flex().id(`tree-${n.id}`).gap(6).px(6).py(4).items_center().rounded(7).cursor_pointer().hover((e) => e.bg("#2b3b50")).when(me, (e) => e.bg("#243d5d")).on_click((_e, cx) => slide.select(n, cx))
         .child(div().flex_none().w(depth * 14)).child(div().flex_none().w(10).text_size(10).text_color(P.muted).child(depth ? "└" : "")).child(dot(ks.color, 8)).child(platformIcon(n, 12))
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(me ? 700 : 400).text_color(P.ink).child(String(n.name || n.address || ""))).child(div().flex_none().text_size(10).font_weight(600).text_color(ks.color).child(`${ks.label} ${ago(n.since)}`)); }));
     else body = v_flex().min_h_full().gap(8).px(14).py(6).children(this.messageList(fitTail(msgs, W, room), plat.name, a.status)); // Z7: oldest on top, newest below; a short record packs to the top (fitTail keeps the newest when it is long)
     return frame.children(parts)
       .child(div().id("panel-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body))
       .when(a.source === "tui", (el) => el.child(v_flex().flex_none().px(14).pt(8).pb(12).gap(4).items_center() // ★74-3: a herdr TUI agent: read here, instruct by herdr agent prompt (no App-only buttons)
-        .when(!!a.address, (e2) => e2.child(h_flex().id("panel-tui-send").w_full().h(36).items_center().justify_center().gap(8).rounded(10).bg(P.blue).cursor_pointer()
+        .when(!!a.address, (e2) => e2.child(h_flex().id("panel-tui-send").w_full().h(36).items_center().justify_center().gap(8).rounded(10).bg("#1e6fe0").cursor_pointer()
           .hover((s) => s.bg("#1860c4")).on_click((_e, cx) => { cx.stop_propagation(); this.openTuiPrompt(a); })
-          .child(div().text_size(13).font_weight(700).text_color("#ffffff").child("指示を送る"))))
-        .child(div().text_size(10).text_color(P.muted).child(a.address ? "herdr TUI のエージェントです（読む・指示のみ）" : "herdr TUI のエージェントです（宛先が決まらないため読むだけ）"))));
+          .child(div().text_size(13).font_weight(700).text_color("#ffffff").child("지시 보내기"))))
+        .child(div().text_size(10).text_color(P.muted).child(a.address ? "herdr TUI 에이전트입니다 (읽기와 지시만 가능)" : "herdr TUI 에이전트입니다 (대상을 찾을 수 없어 읽기만 가능)"))));
   }
 
   // ★105 R7: a run of tool rows becomes one dark box (the "実行ログ"); the other messages are bubbles.
@@ -552,9 +565,9 @@ export class ChatPart {
   // for approval, of a working agent it is still running; the data's own flag (error / is_error / status) wins when it is there. `dark`: on the dark 実行ログ box.
   toolMark(m, last, status, dark = false) {
     const st = String(m.status ?? "").toLowerCase();
-    if (m.error || m.is_error || /^(error|failed|fail)$/.test(st)) return { glyph: "✕", label: "失敗", color: dark ? "#f87171" : "#d6455d" };
-    if (/^(pending|waiting|blocked)$/.test(st) || (last && status === "blocked")) return { glyph: "…", label: "承認待ち", color: dark ? "#fbbf24" : "#b7791f" };
-    if (/^(running|working|in_progress)$/.test(st) || (last && status === "working")) return { glyph: "…", label: "実行中", color: dark ? "#60a5fa" : "#2563eb" };
+    if (m.error || m.is_error || /^(error|failed|fail)$/.test(st)) return { glyph: "✕", label: "실패", color: dark ? "#f87171" : "#d6455d" };
+    if (/^(pending|waiting|blocked)$/.test(st) || (last && status === "blocked")) return { glyph: "…", label: "승인 대기", color: dark ? "#fbbf24" : "#b7791f" };
+    if (/^(running|working|in_progress)$/.test(st) || (last && status === "working")) return { glyph: "…", label: "실행 중", color: dark ? "#60a5fa" : "#2563eb" };
     return { glyph: "✓", label: "", color: dark ? "#4ade80" : STATE.done.color };
   }
   markEl(mk) { return h_flex().flex_none().gap(4).items_center().text_color(mk.color).child(mk.label ? div().text_size(11).child(mk.label) : div()).child(div().child(mk.glyph)); }
@@ -563,7 +576,7 @@ export class ChatPart {
     const out = []; let run = [];
     const flush = () => { if (!run.length) return; const rows = run; run = [];
       out.push(v_flex().id(`pm-log-${out.length}`).w_full().gap(4).px(14).py(10).rounded(10).bg("#14213d")
-        .child(h_flex().gap(6).items_center().child(icon("terminal", 14, "#cbd5e1")).child(div().text_size(15).font_weight(700).text_color("#cbd5e1").child("実行ログ（直近）")))
+        .child(h_flex().gap(6).items_center().child(icon("terminal", 14, "#cbd5e1")).child(div().text_size(15).font_weight(700).text_color("#cbd5e1").child("최근 실행 기록")))
         .children(rows.map(({ m, last }, j) => h_flex().id(`pm-log-${out.length}-${j}`).w_full().gap(8).items_center().font_family("Consolas").text_size(16).text_color("#e5e7eb")
           .child(div().flex_1().min_w(0).truncate().child(String(m.text ?? "").split(/\r?\n/)[0])).child(this.markEl(this.toolMark(m, last, status, true)))))); };
     msgs.forEach((m, i) => { if (m.role === "tool") run.push({ m, last: i === msgs.length - 1 }); else { flush(); out.push(this.panelMessage(m, i, agentName, i === msgs.length - 1, status)); } });
@@ -573,23 +586,23 @@ export class ChatPart {
 
   // One line of the conversation: who, when, what. A tool's work is a small row with its mark (✓ done / … waiting or running / ✕ failed).
   panelMessage(m, i, agentName, last = false, status = null) {
-    if (m.role === "tool") return h_flex().id(`pm-${i}`).w_full().gap(8).px(10).py(6).items_center().rounded(6).bg("#f6f7f9") // 22nd N7: a pale fill and a thin pale frame (the same two colours as detail.js's screen-tool), muted text: a record, not something said
-      .border(1).border_color("#e3e6ec").text_size(16).text_color(P.muted)
+    if (m.role === "tool") return h_flex().id(`pm-${i}`).w_full().gap(8).px(10).py(6).items_center().rounded(6).bg("#202c3e") // 22nd N7: a pale fill and a thin pale frame (the same two colours as detail.js's screen-tool), muted text: a record, not something said
+      .border(1).border_color("#3b4b60").text_size(16).text_color(P.muted)
       .child(div().flex_1().min_w(0).truncate().child(String(m.text ?? "").split("\n")[0])).child(this.markEl(this.toolMark(m, last, status)));
     const user = m.role === "user", { text: body, from } = unwrapHc(m.text);
     // ★105 (codex_3): a rounder bubble (12), the agent's in a pale blue, the time at the right end of the name row
     return v_flex().id(`pm-${i}`).w_full().gap(3)
       .child(h_flex().gap(6).items_center().text_size(13)
-        .child(div().font_weight(700).text_color(user ? P.blue : P.ink).child(user ? "あなた" : agentName))
-        .when(!!from, (e) => e.child(div().id(`pm-from-${i}`).flex_none().text_size(11).text_color(P.muted).tooltip(String(from)).child("親から")))
+        .child(div().font_weight(700).text_color(user ? P.blue : P.ink).child(user ? "사용자" : agentName))
+        .when(!!from, (e) => e.child(div().id(`pm-from-${i}`).flex_none().text_size(11).text_color(P.muted).tooltip(String(from)).child("상위 에이전트")))
         .child(div().flex_1())
         .child(div().flex_none().text_color(P.muted).child(m.at ? clock(m.at) : "")))
-      .child(div().w_full().px(14).py(10).rounded(12).bg(user ? "#d6e6fb" : "#e8f0fe").border(user ? 1 : 0).border_color("#9bbdf0").text_size(17).text_color(P.ink).child(soft(body)));
+      .child(div().w_full().px(14).py(10).rounded(12).bg(user ? "#274565" : "#243d5d").border(user ? 1 : 0).border_color("#4e739e").text_size(17).text_color(P.ink).child(soft(body)));
   }
 
   message(m, i) {
-    const who = { user: ["あなた", "#2f7cf6", "#eef4ff"], assistant: ["エージェント", "#39a380", "#f3faf6"],
-      tool: ["ツール", "#89909d", "#f6f7f9"] }[m.role] ?? [m.role, P.muted, P.bg];
+    const who = { user: ["사용자", "#71b2ff", "#243d5d"], assistant: ["에이전트", "#78d6ad", "#203c36"],
+      tool: ["도구", "#89909d", "#202c3e"] }[m.role] ?? [m.role, P.muted, P.bg];
     return v_flex().id(`msg-${i}`).w_full().gap(3).px(10).py(7).rounded(7).bg(who[2])
       .child(h_flex().gap(6).items_center().text_size(10)
         .child(div().font_weight(700).text_color(who[1]).child(who[0]))

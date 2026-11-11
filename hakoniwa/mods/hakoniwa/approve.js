@@ -3,10 +3,10 @@
 // number of the "yes" / "no" line is the key that is pressed. A screen that cannot be read gives no buttons ("端末で答えてください").
 
 const LINE = /^\s*(?:[❯>›»▶▸→*]\s*)?(\d{1,2})[.)]\s+(\S.*?)\s*$/;
-const YES = /^(yes|yep|はい|承認|許可|allow|approve|proceed|accept|continue|ok\b)/i;
-const NO = /^(no\b|いいえ|拒否|却下|deny|reject|cancel|decline|stop)/i;
+const YES = /^(yes|yep|(?:네|예)(?=$|[\s,.!?，。])|승인|허용|はい|承認|許可|allow|approve|proceed|accept|continue|ok\b)/i;
+const NO = /^(no\b|아니요|아니오|거부|거절|취소|(?:승인|허용)\s*(?:하지|안\s*함)|いいえ|拒否|却下|deny|reject|cancel|decline|stop)/i;
 
-export const classify = (label) => { const t = String(label ?? "").trim(); return YES.test(t) ? "yes" : NO.test(t) ? "no" : "other"; };
+export const classify = (label) => { const t = String(label ?? "").trim(); return NO.test(t) ? "no" : YES.test(t) ? "yes" : "other"; };
 
 // The last run of numbered lines that starts at 1 and counts up by one (two or more lines). null when there is none.
 export function parseOptions(screen) {
@@ -64,7 +64,7 @@ export function stripApprovalDialog(screen) {
   return { text: lines.slice(0, start).join("\n"), cut: true };
 }
 
-const statusOf = (r) => { try { const j = JSON.parse(String(r?.stdout ?? "").trim() || "{}"); return { status: j.status ?? j.terminal?.status ?? null, msg: j.status_msg ?? j.msg ?? j.terminal?.msg ?? null }; } catch { return { status: null, msg: null }; } };
+const statusOf = (r) => { try { const j = JSON.parse(String(r?.stdout ?? "").trim() || "{}"), s = j.status ?? j.terminal?.status; return { status: typeof s === "object" && s ? s.state ?? null : s ?? null, msg: s?.msg ?? s?.message ?? j.status_msg ?? j.msg ?? j.terminal?.msg ?? null }; } catch { return { status: null, msg: null }; } };
 
 // Press the answer. Reads the screen again at the moment of the press (it may have changed), presses the number, waits, and checks that the state moved.
 // io: { hc(args) -> {code, stdout, stderr}, sleep(ms) }. Returns { ok, reason, key }. reason: "unreadable" | "no-option" | "send-failed" | "unchanged" | "ok".
@@ -79,6 +79,7 @@ export async function answerApproval(io, address, want, waitMs = 1800) {
   if (r?.code) return { ok: false, reason: "send-failed", key, detail: String(r.stderr ?? "").slice(0, 120) };
   await io.sleep(waitMs);
   const after = statusOf(await io.hc(["get", address, "--json"]));
+  if (!after.status) return { ok: false, reason: "unchanged", key };
   if (after.status === "blocked" && (before.status !== "blocked" || after.msg === before.msg)) return { ok: false, reason: "unchanged", key };
   return { ok: true, reason: "ok", key };
 }
@@ -208,10 +209,10 @@ export const inboxNeedsRead = (rows, entryOf, lastAt, now, gap = 4000) =>
   (Array.isArray(rows) ? rows : []).filter((a) => a?.status === "blocked" && a.address && !inboxWhat(entryOf(a)) && now - ((lastAt ?? {})[a.id] ?? 0) >= gap);
 
 export const REASON_TEXT = {
-  unreadable: "確認の画面を読み取れません。端末で答えてください",
-  "no-option": "この画面には押せる選択肢が見つかりません。端末で答えてください",
-  "send-failed": "キーを送れませんでした。端末で答えてください",
-  unchanged: "押しましたが状態が変わりません。端末の画面を確かめてください",
+  unreadable: "확인 화면을 읽을 수 없습니다. 터미널에서 응답해 주세요",
+  "no-option": "선택할 수 있는 항목이 없습니다. 터미널에서 응답해 주세요",
+  "send-failed": "키를 전송하지 못했습니다. 터미널에서 응답해 주세요",
+  unchanged: "응답했지만 상태가 바뀌지 않았습니다. 터미널 화면을 확인해 주세요",
 };
 // 18th F5 (inbox.js): the two lines of a report row.
 // 20th H6: a model in brackets at the end ("Claude Code（Opus 5.5）") is not part of the name: the name is "Claude Code", the model goes after the room (reportModel).

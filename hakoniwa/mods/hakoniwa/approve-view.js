@@ -2,7 +2,7 @@
 // Nothing is guessed: only lines that the dialog itself shows are returned. A screen with no readable dialog gives { readable: false } and the card says where to look instead.
 import { approvalPlan, stripApprovalDialog } from "./approve.js";
 
-export const NO_DETAIL_TEXT = "中身は会話の最後の操作を見てください";
+export const NO_DETAIL_TEXT = "자세한 내용은 대화의 마지막 작업을 확인해 주세요";
 const BOX = /[│┃║╭╮╰╯┌┐└┘╔╗╚╝─━═╌┄┈]/g, OPT = /^\s*(?:[❯>›»▶▸→*]\s*)?\d{1,2}[.)]\s+\S/;
 const FOOT = /^(esc\b|enter\b|tab\b|ctrl\b|shift\b|press\b|↑|↓)/i; // key hint lines under the options are not part of the ask
 const clean = (s) => String(s ?? "").replace(BOX, " ").replace(/\s+/g, " ").trim();
@@ -25,16 +25,16 @@ export function approvalSummary(screen) {
 
 // 26th S3 (office-fix31b): a Japanese gloss for the dialog's English heading and question, ONLY for forms known exactly. The original English stays (the gloss is added
 // in full-width brackets); any other text is returned as it is (nothing made up).
-const HEAD_JA = { "Create file": "ファイルを作成", "Edit file": "ファイルを編集", "Read file": "ファイルを読む", "Bash command": "コマンドの実行" };
+const HEAD_JA = { "Create file": "파일 만들기", "Edit file": "파일 수정", "Read file": "파일 읽기", "Bash command": "명령 실행" };
 export function glossWhat(what) {
   const t = String(what ?? ""), i = t.indexOf(" · "), head = i < 0 ? t : t.slice(0, i), ja = HEAD_JA[head];
   return ja ? `${head}（${ja}）${i < 0 ? "" : t.slice(i)}` : t;
 }
 export function glossQuestion(q) {
   const t = String(q ?? ""); let m;
-  if (t === "Do you want to proceed?") return `${t}（実行しますか？）`;
-  if ((m = /^Do you want to create (.+)\?$/.exec(t))) return `${t}（${m[1]} を作成しますか？）`;
-  if ((m = /^Do you want to make this edit to (.+)\?$/.exec(t))) return `${t}（${m[1]} へのこの編集を行いますか？）`;
+  if (t === "Do you want to proceed?") return `${t}（진행하시겠습니까?）`;
+  if ((m = /^Do you want to create (.+)\?$/.exec(t))) return `${t}（${m[1]}을(를) 만드시겠습니까?）`;
+  if ((m = /^Do you want to make this edit to (.+)\?$/.exec(t))) return `${t}（${m[1]}을(를) 수정하시겠습니까?）`;
   return t;
 }
 

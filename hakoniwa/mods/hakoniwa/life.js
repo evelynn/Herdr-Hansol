@@ -81,17 +81,17 @@ export const tierFor = (n) => (n <= 15 ? "tags" : n <= 30 ? "dots" : "dense");
 export const fmtUsd = (cents) => (cents % 100 === 0 ? `$${String(cents / 100).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}` : `$${(cents / 100).toFixed(2)}`);
 export const USAGE_STALE_MS = 15 * 60000; // ★88-6: a Claude usage figure older than this is shown grey with its age (Claude Code refreshes its cache only now and then: 73% stayed up for 2 h while the truth was 100%)
 export const usageAge = (w, now) => (w?.fetched_at && now - w.fetched_at > USAGE_STALE_MS ? ageText(now - w.fetched_at) : null);
-export const ageText = (ms) => (ms < 60000 ? "いま" : ms < 3600000 ? `${Math.round(ms / 60000)}分前` : `${Math.round(ms / 3600000)}時間前`);
+export const ageText = (ms) => (ms < 60000 ? "방금" : ms < 3600000 ? `${Math.round(ms / 60000)}분 전` : `${Math.round(ms / 3600000)}시간 전`);
 export function usageParts(claude, codex, now, demo) {
   const live = (w) => !!w && w.percent != null && !(w.resets_at != null && Number(w.resets_at) < now);
   const out = { demo: !!demo, claude: null, codex: null };
   if (claude && live(claude.session)) {
     const ex = claude.extra;
     out.claude = { age: usageAge(claude, now), session: claude.session, weekly: (claude.weekly ?? []).filter((w) => w.active !== false && live(w)),
-      extra: ex && ex.enabled !== false && ex.used != null && ex.limit != null ? `追加枠 ${fmtUsd(ex.used)} / ${fmtUsd(ex.limit)}` : null };
+      extra: ex && ex.enabled !== false && ex.used != null && ex.limit != null ? `추가 한도 ${fmtUsd(ex.used)} / ${fmtUsd(ex.limit)}` : null };
   }
   if (codex && (live(codex.session) || live(codex.weekly)))
-    out.codex = { rows: [codex.session, codex.weekly].filter(live), age: codex.fetched_at && now - codex.fetched_at > 1800000 ? `${ageText(now - codex.fetched_at)}の記録` : null };
+    out.codex = { rows: [codex.session, codex.weekly].filter(live), age: codex.fetched_at && now - codex.fetched_at > 1800000 ? `${ageText(now - codex.fetched_at)} 기록` : null };
   return out;
 }
 // A state file made by the demo collector says so ("demo": true); it is shown only while the demo is on, and a real state never carries it.
@@ -210,31 +210,31 @@ export const wingFrame = (tick, phase, count) => (((tick + phase) % count) + cou
 // `icon` is what the legend draws: a part name from the sheet manifest (a picture), or `glyph` (the same marks the floor draws:
 // a disc with ! / ✓, the blue dot, the gold ring, the white "…" bubble, the red mug). ★101-6: one short line each, no brackets.
 export const LEGEND_MARKS = [
-  { key: "papers", label: "書類の山", meaning: "メモリが多い", src: "deskProps.papers", icon: { part: "desk_papers2" } },
-  { key: "drinks", label: "缶・カップ", meaning: "作業が長い", src: "deskProps.drinks", icon: { part: "desk_can1" } },
-  { key: "mug", label: "赤いマグ", meaning: "待機", src: "★95 a waiting person has the RED mug", icon: { glyph: "mug" } },
-  { key: "work", label: "青い丸", meaning: "作業中", src: "bg(st.color)", icon: { glyph: "dot", color: "#2F80ED" } }, // ★76 (the state marks stay)
-  { key: "approve", label: "赤い !", meaning: "承認待ち", src: 'disc("!"', icon: { glyph: "disc", text: "!", color: "#d9480f" } },
-  { key: "report", label: "緑の ✓", meaning: "報告あり", src: 'disc("✓"', icon: { glyph: "disc", text: "✓", color: "#1f9d55" } },
-  { key: "parent", label: "金の輪", meaning: "リーダー", src: "lead-ring-", icon: { glyph: "ring", color: "#e0a90f" } }, // ★75-1 (was the ★ over the head)
-  { key: "talk", label: "…", meaning: "会話中", src: "talk-${id}", icon: { glyph: "bubble" } }, // ★66: the only mark over the head
+  { key: "papers", label: "서류 더미", meaning: "메모리 사용량 많음", src: "deskProps.papers", icon: { part: "desk_papers2" } },
+  { key: "drinks", label: "캔과 컵", meaning: "작업 시간 김", src: "deskProps.drinks", icon: { part: "desk_can1" } },
+  { key: "mug", label: "빨간 머그잔", meaning: "대기", src: "★95 a waiting person has the RED mug", icon: { glyph: "mug" } },
+  { key: "work", label: "파란 점", meaning: "작업 중", src: "bg(st.color)", icon: { glyph: "dot", color: "#2F80ED" } }, // ★76 (the state marks stay)
+  { key: "approve", label: "빨간 !", meaning: "승인 대기", src: 'disc("!"', icon: { glyph: "disc", text: "!", color: "#d9480f" } },
+  { key: "report", label: "초록 ✓", meaning: "작업 보고", src: 'disc("✓"', icon: { glyph: "disc", text: "✓", color: "#1f9d55" } },
+  { key: "parent", label: "금색 원", meaning: "리더", src: "lead-ring-", icon: { glyph: "ring", color: "#e0a90f" } }, // ★75-1 (was the ★ over the head)
+  { key: "talk", label: "…", meaning: "대화 중", src: "talk-${id}", icon: { glyph: "bubble" } }, // ★66: the only mark over the head
 ];
 
 // ---- ★30-8 the desk PC by state (the user's rule), with its picture. The legend shows these five lines with the marks above.
 export const LEGEND_PC_RULES = [
-  { key: "working", label: "作業中", meaning: "座り、PCでコード", icon: { part: "laptop_on" } },
-  { key: "away", label: "承認・報告", meaning: "こちらを向いて立つ（空の手を挙げる＝承認待ち／書類＝報告あり）", icon: { part: "laptop_dim" } },
-  { key: "idle", label: "待機", meaning: "席に座る（机に赤いマグ＝指示待ち）", icon: { part: "desk_mug" } }, // ★92 (was: 返事待ち / 休憩 as two more lines: the seated reply and the cup are gone; every idle person holds the red mug)
-  { key: "spare", label: "予備の席", meaning: "机だけ", icon: { part: "desk_free" } },
+  { key: "working", label: "작업 중", meaning: "자리에 앉아 PC 작업", icon: { part: "laptop_on" } },
+  { key: "away", label: "승인·보고", meaning: "서서 손을 들면 승인 대기, 서류를 들면 작업 보고", icon: { part: "laptop_dim" } },
+  { key: "idle", label: "대기", meaning: "자리에 앉아 지시 대기 (빨간 머그잔)", icon: { part: "desk_mug" } }, // ★92 (was: 返事待ち / 休憩 as two more lines: the seated reply and the cup are gone; every idle person holds the red mug)
+  { key: "spare", label: "빈 자리", meaning: "책상만 있음", icon: { part: "desk_free" } },
 ];
 
 // self-review-0505 #7: the folded legend is a small strip of four pictures (the target picture 20261103_211508.png): the desk PC by state.
 // Pressing it opens the whole legend again (★43: folded, never gone).
 export const LEGEND_STRIP = [
-  { key: "working", label: "作業中", part: "laptop_on" },
-  { key: "away", label: "承認・報告", part: "laptop_dim" },
-  { key: "idle", label: "待機", part: "desk_mug" },
-  { key: "spare", label: "予備", part: "desk_free" },
+  { key: "working", label: "작업 중", part: "laptop_on" },
+  { key: "away", label: "승인·보고", part: "laptop_dim" },
+  { key: "idle", label: "대기", part: "desk_mug" },
+  { key: "spare", label: "예비", part: "desk_free" },
 ];
 
 // self-review-0505 #10: one kind of room name, the near-white plate in front of the room (the target picture). A room the layout gave no
@@ -294,7 +294,7 @@ export function unwrapHc(t) {
 }
 // 19th G4: the same for a copy of the terminal screen (no transcript): the wrapper becomes a pale heading line "（親 t184 から）" above the body. Display only; nothing sent changes.
 export function unwrapHcScreen(t) {
-  const s = String(t ?? ""), head = (attrs) => { const f = /\bfrom="([^"]*)"/.exec(attrs); return f && f[1] ? `（親 ${f[1]} から）\n` : ""; };
+  const s = String(t ?? ""), head = (attrs) => { const f = /\bfrom="([^"]*)"/.exec(attrs); return f && f[1] ? `（상위 ${f[1]}로부터）\n` : ""; };
   return s.replace(/<hc\b([^>]*)>([\s\S]*?)<\/hc>/g, (_m, attrs, body) => head(attrs) + body.trim())
     .replace(/<hc\b([^>]*)>/g, (_m, attrs) => head(attrs)).replace(/<\/hc>/g, "");
 }

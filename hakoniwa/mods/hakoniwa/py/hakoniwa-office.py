@@ -1819,7 +1819,7 @@ def build(agents, state, now, out_dir, cfg=None, view=None, debug=False):
             if all(which in parts[f'{ENT}_{n_}'] for n_ in names if f'{ENT}_{n_}' in parts):
                 out['door'][which] = {n_: canvas_of(*scaled(half_of(parts[f'{ENT}_{n_}'], which), kr)) for n_ in names if f'{ENT}_{n_}' in parts}
     # ★42 (review r22): no reception desk by the entrance any more (a small desk without a label between the entrance and the approval desk)
-    names = {'approval': '承認デスク', 'counter': '提出カウンター', 'lounge': '控室'}
+    names = {'approval': '승인 데스크', 'counter': '제출 창구', 'lounge': '대기실'}
     spots = {}
     heads = {}
     def card_spot(rect_, cw_, extra=(), size=None, step=3):

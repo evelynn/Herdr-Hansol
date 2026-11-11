@@ -58,7 +58,7 @@ export const HerdrAppStatePlugin = async () => {
       if (props.info?.id && props.info.parentID) childSessions.set(props.info.id, props.info.parentID);
       if (sid && childSessions.has(sid)) {
         // 子セッションの承認待ちだけ親の端末へ反映する
-        if (type === "permission.asked" || type === "question.asked") send("blocked", { kind: "permission", msg: "承認待ち（子）" });
+        if (type === "permission.asked" || type === "question.asked") send("blocked", { kind: "permission", msg: "승인 대기（하위）" });
         if (type === "permission.replied" || type === "question.replied" || type === "question.rejected") send("working");
         return;
       }
@@ -82,13 +82,13 @@ export const HerdrAppStatePlugin = async () => {
           send("working");
           break;
         case "permission.asked":
-          send("blocked", { kind: "permission", msg: "承認待ち" });
+          send("blocked", { kind: "permission", msg: "승인 대기" });
           break;
         case "question.asked":
-          send("blocked", { msg: "質問待ち" });
+          send("blocked", { msg: "질문 대기" });
           break;
         case "session.error":
-          send("blocked", { msg: "エラー" });
+          send("blocked", { msg: "오류" });
           break;
         case "session.idle":
           send(turnWorked ? "done" : "idle");

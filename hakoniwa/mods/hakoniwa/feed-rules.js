@@ -2,10 +2,10 @@
 // An entry: { at, id, name, from, to, msg }. A person seen for the first time makes no entry (a restart must not flood the list).
 export const FEED_MAX = 100;
 export const FEED_FILTERS = [
-  { key: "all", label: "すべて" },
-  { key: "finished", label: "完了" },   // working -> idle
-  { key: "blocked", label: "承認" },    // -> blocked
-  { key: "done", label: "報告" },       // -> done (a report)
+  { key: "all", label: "전체" },
+  { key: "finished", label: "완료" },   // working -> idle
+  { key: "blocked", label: "승인" },    // -> blocked
+  { key: "done", label: "보고" },       // -> done (a report)
 ];
 
 // msg is what the agent itself says it is doing; the terminal can leave control characters / broken bytes in it: keep printable text only.

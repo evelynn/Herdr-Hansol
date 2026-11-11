@@ -28,8 +28,8 @@ export class RegionPart {
   syncRegion(want, pick, left, list, cx) {
     if (!this.regionEnabled(cx)) { if (this.regionShown) this.regionStop(cx); return false; }
     const target = want ? { kind: "agent", id: want.id, address: want.address, name: want.name } : pick ? { kind: "pick", address: pick.address, name: pick.name ?? pick.address }
-      : shared("hakoniwa.inboxOpen")?.on ? { kind: "inbox", name: "受け箱" } : null; // ★106 ②: nobody chosen + the inbox asked for (chips 承認待ち / 報告あり)
-    if (want && this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "chat"; } // ★106 V1 (J7): the conversation first; the terminal only when its tab is pressed
+      : shared("hakoniwa.inboxOpen")?.on ? { kind: "inbox", name: "받은 편지함" } : null; // ★106 ②: nobody chosen + the inbox asked for (chips 承認待ち / 報告あり)
+    if (want && this.detailTabFor !== want.id) { this.detailTabFor = want.id; this.detailTab = "terminal"; }
     const tab = want ? tabFor(this.detailTab, true, this.familyRows(want, list).length - 1) : "terminal";
     const plan = regionPlan({ target, tab, collapsed: !!this.rightCollapsed, viewW: left.width, rightW: this.rightW, topH: headHeight(this.rightW ?? Math.round(left.width * 0.3)) });
     if (this.resize && this.regionShown) return true; // a drag of the border: resized live (regionResize), the plan runs once when it ends
@@ -83,11 +83,11 @@ export class RegionPart {
     const s = this.regionSel(), list = this.items(), a = s?.kind === "agent" ? list.find((x) => x.id === s.id) : null;
     const slide = { select: (n) => setShared("hakoniwa.pick", { state: n.status, id: n.id, at: Date.now() }), close: () => setShared("hakoniwa.close", { at: Date.now() }),
       collapse: (on) => setShared("hakoniwa.rcollapse", { on: !!on, at: Date.now() }) };
-    if (!s) return v_flex().size_full().bg(P.paper).child(div().p(16).text_size(14).text_color(P.muted).child("読み込み中…")); // ★104 U9: right after a person is chosen, until rsel is set
+    if (!s) return v_flex().size_full().bg(P.paper).child(div().p(16).text_size(14).text_color(P.muted).child("불러오는 중…")); // ★104 U9: right after a person is chosen, until rsel is set
     if (s.collapsed) return this.collapsedStrip(a, { face: a ? this.faceFile(a) : null }, slide);
     if (s.kind === "pick") return this.pickHeadView({ name: s.name });
     if (s.kind === "inbox") return this.inboxView(); // ★106 ②
-    if (!a) return v_flex().size_full().bg(P.paper).child(div().p(16).text_size(14).text_color(P.muted).child(this.items().length ? "このエージェントは見つかりません" : "読み込み中…"));
+    if (!a) return v_flex().size_full().bg(P.paper).child(div().p(16).text_size(14).text_color(P.muted).child(this.items().length ? "에이전트를 찾을 수 없습니다" : "불러오는 중…"));
     const tab = tabFor(s.tab, true, this.familyRows(a, list).length - 1);
     return v_flex().id("rhead-root").size_full().overflow_hidden().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .children(this.detailHead(a, list, slide, { width: s.w, tab, hasTerminal: true, face: this.faceFile(a), onTab: (k) => setShared("hakoniwa.tab", { id: a.id, tab: k, at: Date.now() }) }));
