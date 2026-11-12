@@ -21,6 +21,7 @@ import { RegionPart } from "./region.js";
 import { DetailPart } from "./detail.js";
 import { GridPart } from "./grid.js";
 import { LaunchPart } from "./launch.js";
+import { RemotePart } from "./remote.js";
 import { RoomPart } from "./room.js";
 import { MeetPart } from "./meet.js";
 import { PanelPart } from "./panel.js";
@@ -53,6 +54,7 @@ class AgentHud extends View {
     if (role === "agent-menu") return;
     if (role === "tui-prompt") return this.initTuiPrompt(cx); // ★74-3 (panel.js)
     cx.timer.every(REFRESH_MS, (cx) => this.refresh(cx));
+    if (role === "band") { cx.spawn(async (cx2) => { try { if (await this.remotePoll()) cx2.notify(); } catch {} }); cx.timer.every(3000, (cx2) => cx2.spawn(async (cx3) => { try { if (await this.remotePoll()) cx3.notify(); } catch {} })); } // the "원격" button (remote.js)
     if (role !== "band") cx.timer.every(30000, (cx) => cx.notify());
     // "hakoniwa.chat-next" (keys.json or herdr-app do): the conversation of whoever needs you first.
     // "hakoniwa.demo": switch the made-up agents on / off (shared "hakoniwa.demo").
@@ -67,6 +69,7 @@ class AgentHud extends View {
         if (command === "hour") { const seq = [8, 12, 17, 22, null], cur = shared("hakoniwa.hour"), i = seq.indexOf(typeof cur === "number" ? cur : null); setShared("hakoniwa.hour", seq[(i + 1) % seq.length]); continue; } // review: morning, noon, evening, night, real time
         if (command === "launch") { this.openLaunch(this.items().find((a) => a.id === shared("hakoniwa.sel")) ?? null); continue; } // ★27-1 (review pictures): opens the input dialog; nothing is started by it
         if (command === "end") { const t = this.items().find((a) => a.id === shared("hakoniwa.sel") && a.source === "app"); if (t) this.askEnd(t, this.items()); continue; } // opens the confirm dialog only (nothing is ended until "はい")
+        if (command === "remote") { await this.remoteToggle({ notify() {} }); continue; } // the "원격" button without a click (remote.js); no cx here, the 3 s poll redraws
         if (command === "bird") { setShared("hakoniwa.bird", Date.now()); continue; }
         if (command === "weather") { const seq = ["clear", "partly", "cloudy", "fog", "rain", "snow", "thunder", null], cur = shared("hakoniwa.weather"), i = seq.indexOf(typeof cur === "string" ? cur : null); setShared("hakoniwa.weather", seq[(i + 1) % seq.length]); continue; } // review: step through the 7 kinds, then the real weather
         if (String(command).split(":")[0] === "legend") { const a = String(command).split(":")[1], cur = shared("hakoniwa.legend")?.fold; setShared("hakoniwa.legend", { fold: a === "fold" ? true : a === "open" ? false : !cur, at: Date.now() }); continue; } // review: hakoniwa.legend:fold / :open (no arg: the other one) folds or opens the legend without a click
@@ -333,6 +336,7 @@ class AgentHud extends View {
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => { cx.stop_propagation(); setShared("hakoniwa.chatEnabled", { on: shared("hakoniwa.chatEnabled")?.on !== true }); cx.notify(); })
         .child(shared("hakoniwa.chatEnabled")?.on === true ? "대화 켬" : "대화 끔"))
+      .child(this.remoteButton())
       .child(div().id("hakoniwa-settings").flex_none().px(10).h(32).flex().items_center().rounded(8)
         .border(1).border_color(P.line).text_size(UI.text.small).text_color(P.ink).cursor_pointer()
         .hover((s) => s.bg("#253449")).tooltip("Herdr 설정")
@@ -593,7 +597,7 @@ class AgentHud extends View {
 }
 
 // Office and chat live in their own files; their methods join the class here.
-for (const part of [OfficePart, ChatPart, DetailPart, GridPart, LaunchPart, RoomPart, MeetPart, PanelPart, RegionPart, FeedPart])
+for (const part of [OfficePart, ChatPart, DetailPart, GridPart, LaunchPart, RoomPart, MeetPart, PanelPart, RegionPart, FeedPart, RemotePart])
   for (const k of Object.getOwnPropertyNames(part.prototype))
     if (k !== "constructor") AgentHud.prototype[k] = part.prototype[k];
 
