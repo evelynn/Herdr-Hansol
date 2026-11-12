@@ -3,10 +3,14 @@
 // "立てる" calls the App's commands through launchAgent (actions.js): tab.new, or space.new for a new space. Nothing is started before that button.
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
-import { appHome, closeOverlay, exec, hc, openOverlay, props, readTextFile, run, setShared, shared, spaces, writeTextFile } from "herdr";
+import { appHome, closeOverlay, exec, hc, notify, openOverlay, props, readTextFile, run, setShared, shared, spaces, writeTextFile } from "herdr";
 import { P } from "./common.js";
 import { icon } from "./icons.js";
 import { AGENT_KINDS, FREE_NAME, FREE_SPACE, NEW_SPACE, cleanChoice, cleanDefaults, defaultSpace, effortsFor, launchAgent, normalizeOptions } from "./actions.js";
+
+// 2026-11-12 (user): the launch window has an error, so every "add" (＋ agent / ＋ terminal / the list's ＋ / the launch command) opens a plain shell
+// in the chosen room at once, without the window. false = the launch window again.
+const SHELL_ONLY = true;
 
 // ★107 the six tiles: the five agent kinds and a plain shell
 const KINDS6 = [...AGENT_KINDS, { key: "shell", label: "셸" }];
@@ -46,6 +50,11 @@ export class LaunchPart {
     // 19th K4: with nobody chosen and no room given, the room on show is the default (unknown -> the old first room)
     const mineId = selected?.space ? list.find((s) => s.name === selected.space)?.id : null;
     const space = spaceId === FREE_SPACE ? FREE_SPACE : spaceId && list.some((s) => s.id === spaceId) ? spaceId : mineId ?? (shown && list.some((s) => s.id === shown) ? shown : defaultSpace(list, selected)); // ★107 the left list's フリー heading passes FREE_SPACE
+    if (SHELL_ONLY) { // same call as the window's 起動 with the shell tile and the window's default folder
+      const fail = (e) => notify({ title: "터미널 추가 실패", body: String(e ?? "").slice(0, 200), level: "error" });
+      launchAgent(run, { space, kind: "shell", folder: selected?.cwd ?? "" }, list, hc, writeTextFile).then((r) => { if (!r?.ok) fail(r?.error); }, fail);
+      return;
+    }
     const rows = shared("hakoniwa.launch.rows") ?? { models: true, efforts: true, last: true }; // what the last window showed (the lists load after it opens)
     const h = launchHeight({ term: mode === "terminal", free: space === FREE_SPACE || list.some((s) => s.id === space && s.name === FREE_NAME), newSpace: space === NEW_SPACE, shell: false, ...rows, adv: false, task: false, child: false });
     openOverlay({ mod: "hakoniwa", kind: "dialog", modal: true, width: 520, height: h, // ★10th A6: sized to the folded content (the old fixed 650 left ~190 px empty when the lists were missing); the middle scrolls if it is taller
