@@ -32,7 +32,7 @@ from PIL import Image, ImageDraw, ImageFilter
 import hansol_guild_sprites as gs
 from hansol_sprites import APP_HOME
 
-VERSION = 'g1'                       # part of every picture's name: a change here makes them all again
+VERSION = 'g2'                       # part of every picture's name: a change here makes them all again
 TW, TH = 48, 24                      # one grid tile (the office's)
 TILE = 96                            # one sheet floor tile = 2 x 2 grid tiles
 STAND_H = 86                         # a standing person, px (the office's people are 88 in a 92 canvas)
@@ -341,14 +341,14 @@ def empty_table(F):
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), 'RGBA')
 
 
-def banner_face(std, cloth):
-    """[x, y, w, h] as fractions of the standard picture: its cloth (the pixels the workspace's colour took: `cloth` vs `std`),
+def banner_face(std, key_hex):
+    """[x, y, w, h] as fractions of the standard picture: its cloth (the pixels drawn in the key colour, whatever colour they take),
     the rows at least 85 % as wide as the widest (not the loops on the pole), inset from the gold edge. office.js writes the
     workspace's name there."""
-    d = np.abs(np.array(std).astype(int) - np.array(cloth).astype(int)).sum(axis=2) > 30
+    d = gs.key_mask(std, key_hex)
     widths = d.sum(axis=1)
     rows = np.nonzero(widths >= widths.max() * 0.85)[0]       # (the crossbar's caps and the feet change a little too: not as many)
-    cols = np.nonzero(d[rows].any(axis=0))[0]
+    cols = np.nonzero(d[rows].mean(axis=0) >= 0.5)[0]           # the columns that are cloth in most of those rows (not a stray trim pixel)
     H, W = d.shape
     y0, y1, x0, x1 = rows.min(), rows.max(), cols.min(), cols.max()
     ix, iy = (x1 - x0) * 0.08, (y1 - y0) * 0.04
@@ -431,8 +431,23 @@ def outside_panorama(period, use):
     return img.resize((W * 3, H * 3), Image.NEAREST)
 
 
+def opening_mask(img):
+    """A g11 window's see-through opening: the transparent pixels the stone encloses (not reached from the piece's border),
+    or the flat green #00FF00 a sheet without transparency fills it with. Empty for a window without one (g2's stained glass)."""
+    a = np.array(img)
+    al = a[..., 3]
+    solid = Image.fromarray(np.pad(np.where(al >= 128, 255, 0), 1).astype(np.uint8), 'L').copy()   # (a copy: an image on a numpy buffer is read-only)
+    ImageDraw.floodfill(solid, (0, 0), 128)                 # the outside, through the transparent pixels
+    hole = (np.array(solid)[1:-1, 1:-1] == 0) | ((a[..., 1] > 200) & (a[..., 0] < 90) & (a[..., 2] < 90) & (al > 0))
+    return hole if hole.sum() > 0.02 * (al > 0).sum() else np.zeros(al.shape, bool)
+
+
 def pane_mask(img):
-    """The panes of a window piece: its saturated, bright pixels inside the panes' box (the lead lines and the stone stay)."""
+    """The panes of a window piece: a g11 window's opening exactly; else (g2's stained glass) its saturated, bright pixels
+    inside the panes' box (the lead lines and the stone stay)."""
+    hole = opening_mask(img)
+    if hole.any():
+        return hole
     a = np.array(img)
     hsv = np.array(img.convert('RGB').convert('HSV')).astype(np.int32)
     sat = (hsv[..., 1] > 80) & (hsv[..., 2] > 70) & (a[..., 3] > 0)
@@ -765,7 +780,7 @@ def plan(agents, demo=False, preview=None):
             std = gs.scaled(F['standard'], BANNER_K)
             cloth = gs.recolor(std, sheets.get('robe_key', '#D02FC0'), col_hex)
             srect = put('standard', *st_tile, 1, 1, oid=f'standard:{g}', kind='standard', img=cloth)
-            fx_, fy_, fw_, fh_ = banner_face(std, cloth)
+            fx_, fy_, fw_, fh_ = banner_face(std, sheets.get('robe_key', '#D02FC0'))
             face = [round(srect[0] + srect[2] * fx_, 1), round(srect[1] + srect[3] * fy_, 1), round(srect[2] * fw_, 1), round(srect[3] * fh_, 1)]
             banner = {'face': face, 'ink': ink_for(col_hex)}
             pa = (face[0] + face[2] / 2, face[1] + face[3] / 2)

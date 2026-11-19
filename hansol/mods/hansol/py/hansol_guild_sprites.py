@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 import hansol_sprites as sp
 
@@ -138,11 +138,11 @@ def check():
 
 def usable(state=None):
     """{'classes': [classes whose poses and walk sheets are ok, in sheets.json order], 'work': {class: True when its writing frames are ok},
-    'g7' / 'g8' / 'g10': True when the standard + plaque / the outside views / the extra things sheet is ok}."""
+    'g7' / 'g8' / 'g10' / 'g11': True when the standard + plaque / the outside views / the extra things / the see-through windows sheet is ok}."""
     state = state or check()
     ok = {x['key'] for x in state['sheets'] if x['ok']}
     classes = [c for c in spec().get('classes', []) if f'{c}_poses' in ok and f'{c}_walk' in ok]
-    return {'classes': classes, 'work': {c: f'{c}_work' in ok for c in classes}, 'g7': 'g7_guild' in ok, 'g8': 'g8_outside' in ok, 'g10': 'g10_decor' in ok}
+    return {'classes': classes, 'work': {c: f'{c}_work' in ok for c in classes}, 'g7': 'g7_guild' in ok, 'g8': 'g8_outside' in ok, 'g10': 'g10_decor' in ok, 'g11': 'g11_windows' in ok}
 
 
 # ---------------------------------------------------------------- cutting (P2)
@@ -162,6 +162,7 @@ def sheets_signature(folder=None):
 
 
 CUT_DIR = sp.APP_HOME / 'hansol-office' / 'guild' / 'cut'
+CUT_VERSION = 2   # raise when the cutting changes: the pieces are cut again (2: a piece keeps only its own pixels)
 
 
 def cut_sheet(entry, folder=None):
@@ -171,7 +172,7 @@ def cut_sheet(entry, folder=None):
     path = (folder or sheet_dir()) / entry['file']
     st = path.stat()
     stem = Path(entry['file']).stem
-    key = f"{stem}-{st.st_size}-{int(st.st_mtime)}-{hashlib.sha1(json.dumps(entry['rows']).encode()).hexdigest()[:6]}"
+    key = f"{stem}-{st.st_size}-{int(st.st_mtime)}-{hashlib.sha1(json.dumps([entry['rows'], CUT_VERSION]).encode()).hexdigest()[:6]}"
     d = CUT_DIR / key
     names = [n for r in entry['rows'] for n in r]
     if all((d / f'{n}.png').is_file() for n in names):
@@ -198,9 +199,27 @@ def cut_sheet(entry, folder=None):
     return out
 
 
+def _owners(alpha):
+    """(each px's piece number or -1, {piece box: number}): the pieces as sp.components finds them (4 px cells grown by GAP),
+    so a piece's crop keeps only its own pixels where its box overlaps a neighbour's (a candle tip of the row below)."""
+    C = sp.CELL
+    h, w = alpha.shape
+    small = (alpha[:h // C * C, :w // C * C] > sp.ALPHA_MIN).reshape(h // C, C, w // C, C).any(axis=(1, 3))
+    own = np.full(small.shape, -1, np.int32)
+    ids = {}
+    for i, cells in enumerate(sp.label(sp._grow(small, GAP))):
+        ys, xs = zip(*cells)
+        own[list(ys), list(xs)] = i
+        ids[(min(xs) * C, min(ys) * C, (max(xs) + 1) * C, (max(ys) + 1) * C)] = i
+    px = np.full((h, w), -1, np.int32)
+    px[:h // C * C, :w // C * C] = np.repeat(np.repeat(own, C, axis=0), C, axis=1)
+    return px, ids
+
+
 def _cut_sheet(entry, path):
     img = Image.open(path).convert('RGBA')
     a = alpha_of(img)
+    owner, ids = _owners(a)
     if (np.array(img)[..., 3] < 250).mean() <= 0.05:          # a flat background: the corners' colour becomes transparent
         arr = np.array(img)
         arr[..., 3] = a
@@ -211,6 +230,9 @@ def _cut_sheet(entry, path):
             piece = img.crop(b)
             arr = np.array(piece)
             arr[..., 3] = np.where(arr[..., 3] > 8, arr[..., 3], 0)   # the faint haze an image model leaves around a piece
+            i = ids.get(tuple(int(v) for v in b))
+            if i is not None:
+                arr[..., 3] = np.where(owner[b[1]:b[3], b[0]:b[2]] == i, arr[..., 3], 0)
             piece = Image.fromarray(arr, 'RGBA')
             bb = piece.getbbox()
             out[name] = piece.crop(bb) if bb else piece
@@ -314,6 +336,16 @@ def _hsv(hex_):
     return c
 
 
+def key_mask(img, key_hex, hue_tol=24):
+    """The pixels drawn in the key colour (its hue, saturated enough): a robe, a standard's cloth."""
+    kh = _hsv(key_hex)[0]
+    rgba = np.array(img)
+    hsv = np.array(Image.fromarray(rgba[..., :3], 'RGB').convert('HSV')).astype(np.int32)
+    dh = np.abs(hsv[..., 0] - kh)
+    dh = np.minimum(dh, 256 - dh)
+    return (dh <= hue_tol) & (hsv[..., 1] >= 55) & (rgba[..., 3] > 0)
+
+
 def recolor(img, key_hex, to_hex, hue_tol=24):
     """The robe: pixels near the key colour's hue (and saturated enough) take the new colour's hue; saturation and value are scaled by
     new / key, so the shading stays."""
@@ -325,7 +357,10 @@ def recolor(img, key_hex, to_hex, hue_tol=24):
     hsv = np.array(Image.fromarray(rgba[..., :3], 'RGB').convert('HSV')).astype(np.int32)
     dh = np.abs(hsv[..., 0] - kh)
     dh = np.minimum(dh, 256 - dh)
-    mask = (dh <= hue_tol) & (hsv[..., 1] >= 55) & (rgba[..., 3] > 0)
+    sat = (hsv[..., 1] >= 55) & (rgba[..., 3] > 0)
+    core = (dh <= hue_tol) & sat
+    near = np.array(Image.fromarray(core.astype(np.uint8) * 255, 'L').filter(ImageFilter.MaxFilter(5))) > 0
+    mask = core | (near & (dh <= hue_tol * 2) & sat)    # the key colour's edge, blended with the trim or the outline (left pink otherwise)
     out = hsv.copy()
     out[..., 0] = np.where(mask, th, hsv[..., 0])
     out[..., 1] = np.where(mask, np.clip(hsv[..., 1] * (ts / max(1, ks)), 0, 255), hsv[..., 1])

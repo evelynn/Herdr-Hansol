@@ -205,6 +205,23 @@ shield_rack = three round painted shields on a low wooden rack (2 x 1 tiles, lon
 All lit like the other furniture (warm torchlight from the upper left), no text, no shadows outside each piece.
 ```
 
+### g11-windows.png — 바깥이 보이는 창문 (3조각: 3, 5차 추가)
+g2의 `window_l`/`window_r`(스테인드글라스)를 대신하는 창문. 앱이 유리 자리의 **투명한 구멍**에만 g8 바깥 풍경을 넣는다.
+`g2-walls.png`를 참고 이미지로 함께 넣는다. 벽 돌·높이·길이·배율이 g2의 `wall_l`/`wall_r`과 같아야 한다.
+```
+Row 1: ref_tile = one plain flagstone floor tile (the same scale as g2-walls.png);
+window_l = EXACTLY the same stone wall segment as g2's wall_l (same stones, same height, 2 floor tiles long, same top),
+  with one tall pointed-arch window in its middle: a deep carved stone frame, two slim stone columns at the sides,
+  a stone sill at the bottom; the glass area is an empty SEE-THROUGH OPENING;
+window_r = the same window in g2's wall_r.
+The opening: every pixel of it fully transparent (alpha 0): no glass colour, no lead lines, no reflections, no haze,
+no stained glass anywhere. One thin vertical stone mullion may split it into two lights, and the arch top may have
+a simple stone quatrefoil whose holes are transparent too. The opening is completely enclosed by opaque stone
+(it never opens to the outside of the piece). Hard pixel edges: no semi-transparent pixels on the opening's border.
+If transparency is impossible: fill the whole opening with one flat pure green #00FF00 (no shading, no other green
+anywhere) on the white background.
+```
+
 ### 새 직업 8종 (포즈·걷기 시트 공통 인물 설명, 직업 캐릭터 공통 프롬프트 뒤에 붙임)
 - **barbarian:** 성인 남성 바바리안. 털 장식 가죽 갑옷, 맨팔, 허리와 어깨에 두른 큰 천(마젠타), 등에 큰 양날 도끼.
 - **bard:** 성인 여성 음유시인. 더블릿과 짧은 망토(마젠타), 깃털 달린 챙 모자(갈색), 등에 류트.
