@@ -585,6 +585,112 @@ def collect_codex_usage(cache):
     return saved['data'] if saved else None
 
 
+# ---------------------------------------------------------------- ranks (output tokens per agent session)
+# Only numbers are read from the session's own transcript files (no API call): an assistant line's message id and usage.output_tokens
+# (a message is written once per content block, all with the same usage: the same id in a row counts once).
+# A transcript is read once, from where the last run stopped (the first count of a long history takes several runs: "pending").
+
+XP_BUDGET_BYTES = 24 * 1024 * 1024
+XP_BUDGET_S = 0.4
+_XP_ID = re.compile(rb'"id":"(msg_[^"]+)"')
+_XP_OUT = re.compile(rb'"usage":\{[^{}]*?"output_tokens":(\d+)')
+
+
+def _xp_scandir(path):
+    try:
+        return list(os.scandir(path))
+    except OSError:
+        return []
+
+
+def _xp_claude_files(projects):
+    """[(path, size, mtime, session id)]: <project>/<session>.jsonl and <project>/<session>/subagents/*.jsonl (DirEntry sizes: no stat calls)."""
+    out = []
+    for proj in _xp_scandir(projects):
+        if not proj.is_dir():
+            continue
+        for e in _xp_scandir(proj.path):
+            if e.name.endswith('.jsonl') and e.is_file():
+                s = e.stat()
+                out.append((e.path, s.st_size, s.st_mtime, e.name[:-6]))
+            elif e.is_dir() and e.name != 'memory':
+                for sub in _xp_scandir(os.path.join(e.path, 'subagents')):
+                    if sub.name.endswith('.jsonl') and sub.is_file():
+                        s = sub.stat()
+                        out.append((sub.path, s.st_size, s.st_mtime, e.name))
+    return out
+
+
+def _scan_claude(path, size, st, budget):
+    """Reads at most `budget` new bytes of a transcript into st = [offset, counted, last id, last id's tokens].
+    Answers (bytes read, finished)."""
+    if size < st[0]:                                   # rewritten: count again
+        st[:] = [0, 0, '', 0]
+    if size == st[0]:
+        return 0, True
+    with open(path, 'rb') as f:
+        f.seek(st[0])
+        data = f.read(min(size - st[0], budget))
+        end = data.rfind(b'\n') + 1
+        if not end:                                    # no whole line yet; a line longer than the budget is skipped
+            if len(data) < budget:
+                return len(data), False
+            while True:
+                chunk = f.read(1 << 20)
+                if not chunk:
+                    return len(data), False
+                cut = chunk.find(b'\n')
+                if cut >= 0:
+                    st[0] = f.tell() - len(chunk) + cut + 1
+                    return len(data), st[0] >= size
+    pos = 0
+    while True:                                        # only the lines with a usage are looked at (tool output lines are long)
+        i = data.find(b'"output_tokens"', pos, end)
+        if i < 0:
+            break
+        a, b = data.rfind(b'\n', 0, i) + 1, data.find(b'\n', i, end)
+        line, pos = data[a:b], b + 1
+        if b'"type":"assistant"' not in line:
+            continue
+        mid, out = _XP_ID.search(line), _XP_OUT.search(line)
+        if not mid or not out:
+            continue
+        key, value = mid.group(1).decode('ascii', 'replace'), int(out.group(1))
+        if key == st[2]:
+            st[3] = max(st[3], value)
+        else:
+            st[1] += st[3]
+            st[2], st[3] = key, value
+    st[0] += end
+    return end, st[0] >= size
+
+
+def collect_xp(cache, projects=None):
+    """{'sessions': {Claude session id: output tokens (with its subagents)}, 'pending': bool}."""
+    projects = projects or PROJECTS
+    cache.pop('xp_codex', None)                       # (the folder counts of the first version are gone)
+    files = cache.setdefault('xp_files', {})
+    started, budget, pending = time.monotonic(), XP_BUDGET_BYTES, False
+    found = sorted(_xp_claude_files(projects), key=lambda x: -x[2])   # the live sessions first
+    sessions = {}
+    for path, size, _mtime, sid in found:
+        st = files.setdefault(path, [0, 0, '', 0])
+        if size != st[0]:
+            if budget > 0 and time.monotonic() - started < XP_BUDGET_S:
+                try:
+                    used, done = _scan_claude(path, size, st, budget)
+                except OSError:
+                    used, done = 0, False
+                budget -= used
+                pending = pending or not done
+            else:
+                pending = True
+        sessions[sid] = sessions.get(sid, 0) + st[1] + st[3]
+    for stale in set(files) - {x[0] for x in found}:
+        del files[stale]
+    return {'sessions': sessions, 'pending': pending}
+
+
 # ---------------------------------------------------------------- memory (for the clean-up candidates)
 
 MEM_EVERY_MS = 60 * 1000          # measure about once a minute; in between the last value is returned
@@ -1143,6 +1249,12 @@ def collect(cache, sources=None):
     except Exception as exc:                          # the events are an extra: never break the state for them
         approvals = {'recent': 0, 'unmatched': 0, 'total': 0, 'error': str(exc)[:120]}
     attach_memory(agents, table, cache)
+    try:                                              # ★rank: output tokens for the levels (an extra: never breaks the state)
+        xp = collect_xp(cache)
+    except Exception as exc:
+        xp = {'sessions': {}, 'pending': False, 'error': str(exc)[:120]}
+    for agent in agents:
+        agent['xp_tokens'] = xp['sessions'].get(agent.get('session_id')) if agent.get('session_id') else None
     counts = {key: sum(1 for a in agents if a['status'] == key) for key in ORDER}
     counts['long_idle'] = sum(1 for a in agents if a['long_idle'])
     by_source = {key: sum(1 for a in agents if a['source'] == key) for key in ('t3', 'tui', 'app')}
@@ -1155,6 +1267,7 @@ def collect(cache, sources=None):
         'queue': queue, 'counts': counts, 'cleanup': cleanup_list(agents), 'by_source': by_source, 'claude_sessions': claude,
         'usage': collect_usage(cache, errors), 'errors': errors,
         'codex_usage': collect_codex_usage(cache),
+        'xp': {key: xp[key] for key in ('pending', 'error') if key in xp},
         'left': track_left(agents, cache), 'approvals': approvals,
         'messages': safe_messages(agents, cache),
     }

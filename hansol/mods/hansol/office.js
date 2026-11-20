@@ -13,6 +13,7 @@ import { h_flex, v_flex } from "gpui-base";
 import { splitHandle } from "./ui.js";
 import { icon } from "./icons.js";
 import { nearbyTag } from "./tag-placement.js";
+import { rankChipW, agentRankKey } from "./rank.js";
 import { openTerminalWindow } from "./terminal-window.js";
 import { panelFit, sideFit as sideFitBase } from "./panel.js";
 import { appHome, exec, focused, hc, readTextFile, run, setShared, shared, spaces, panes, writeTextFile } from "herdr";
@@ -1486,13 +1487,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       const d = Math.max(18, ((sc.pose_size?.stand?.w ?? sc.sprite?.w ?? 12) * k) * 0.42);
       return { d, cx: ox + x.pos[0] * k + ((FEET_CX[name] ?? 0.5) - 0.5) * psz.w * k, cy: oy + x.pos[1] * k - (/pc|sofa|doze|raise/.test(name) ? 0.07 : 0.025) * psz.h * k };
     };
-    for (const x of shown) if (x.id === sel) { // a soft ring on the floor under the chosen person
-      const g = ringAt(x), rw = g.d, rh = g.d, dur = this.transMs(x.p);
-      put(x, 1, div().id("sel-ring").absolute().left(g.cx - rw / 2).top(g.cy - rh / 2).w(rw).h(rh).rounded(rw)
-        .border(2.5).border_color("#7465dbdd").bg("#7465db22")
-        .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" }));
-    }
-    for (const x of shown) if (x.id !== sel && commanderInfo(x.a, list).commander) { // ★72-2 a parent: a thin gold ring at the feet (not red: that is waiting / an error)
+    for (const x of shown) if (commanderInfo(x.a, list).commander) { // (2026-11-21 no ring under the chosen person any more: a leader keeps its gold ring when chosen) // // ★72-2 a parent: a thin gold ring at the feet (not red: that is waiting / an error)
       const g = ringAt(x), rw = g.d, rh = g.d, dur = this.transMs(x.p);
       put(x, 1, div().id(`lead-ring-${x.id}`).absolute().left(g.cx - rw / 2).top(g.cy - rh / 2).w(rw).h(rh).rounded(rw).border(2.5).border_color("#e0a90fdd")
         .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" }));
@@ -1634,7 +1629,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       let sname = (st.key === "working" || st.key === "shell") ? activityLabel(a) : st.label;
       const text = (str) => [...str].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 13.7 : 7.7), 0); // generous: a tag is never narrower than its words
       const askLines = big ? Math.ceil([...String(blockedText(a)).split("\n")[0]].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1.7 : 1), 0) / 19) : 0;
-      let w = big ? 214 : Math.round(36 + text(sname));
+      let w = big ? 214 : Math.round(36 + text(sname) + rankChipW(a)); // ★rank: room for "Lv.7"
       const h = big ? 46 + 14 * Math.max(1, askLines) : 27;
       const hx = ox + pos[0] * k, hy = oy + pos[1] * k - sh;
       const hh = detail && !big ? h + 4 : h; // ★88-6 the box that is really drawn (a hovered / chosen tag is 4 px taller than the one the places were checked with: two of them overlapped)
@@ -1642,7 +1637,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       let near = nearbyTag(r, left.width - panelW, left.height, (q) => !!hit_(q, id) || onNoGo(q));
       if (!near && !big) {
         sname = ({ blocked: "승인", working: "작업", done: "보고", idle: "대기", shell: "셸 대기" })[st.key] ?? st.label;
-        w = Math.round(36 + text(sname));
+        w = Math.round(36 + text(sname) + rankChipW(a));
         near = nearbyTag({ ...r, x: hx - w / 2, w }, left.width - panelW, left.height, (q) => !!hit_(q, id) || onNoGo(q));
       }
       if (!near) {
@@ -1770,7 +1765,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         const toks = isl.title.split(/(?<=[-_ ])/).length; // (more lines than words would cut a word in two: only for a single long word)
         for (let L = 1; L <= 3; L++) { if (L > Math.max(toks, 1) && toks > 1) break; const ls = wrap(isl.title, L); if (ls.length > 3) continue; const t = Math.min(bw / (Math.max(...ls.map(units)) * 0.62), bh * 0.8 / (ls.length * 1.3), 15); if (!best || t > best.t + 0.5) best = { ls, t }; }
         const tsz = Math.max(7, best?.t ?? 9), lines = best?.ls ?? [clipName(isl.title, 6)];
-        root.child(v_flex().id(`plate-${isl.key}`).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).on_click((_e, cx) => { cx.stop_propagation(); this.plateOpen = this.plateOpen === isl.key ? null : isl.key; cx.notify(); })
+        root.child(v_flex().id(`plate-${isl.key}`).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).on_click((_e, cx) => { cx.stop_propagation(); this.flagClick(isl, mine.map((pid) => byId.get(pid)).filter(Boolean), cx); }) // 2026-11-21 a flag opens its space's Git graph window (git-tree.js)
           .absolute().left(ox + sx * k).top(oy + sy * k).w(bw).h(bh).items_center().justify_center().gap(Math.max(1, tsz * 0.25)).overflow_hidden().rounded(2).hover((e) => e.bg("#ffffff1c"))
           .children(lines.map((ln) => div().text_size(tsz).font_weight(800).text_color(ink).whitespace_nowrap().child(ln)))
           .when(wt > 0, (e) => e.child(h_flex().flex_none().gap(2).px(3).items_center().rounded(6).bg("#fde7cf").child(dot(STATE.blocked.color, 5)).child(div().text_size(Math.max(7, tsz * 0.75)).font_weight(700).text_color(STATE.blocked.color).child(`${wt}`)))));
@@ -2281,10 +2276,12 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     }
     if (a.status === "idle" && atDesk && files.read_pc && this.scene?.seats) { // back at the desk after a break: leaning back in the chair
       if (!p.walking && !p.meet && !(p.busy && Date.now() < p.busy)) { // now and then the mug, a stretch or a look round instead (idleDeskPose; the office and the guild hall)
-        const v = idleDeskPose(a.id), st = Array.isArray(files.stand) ? files.stand[0] : files.stand;
-        const f = v === "mug" ? files.prop?.coffee_f : v === "look" ? files.prop?.stand_b : v === "stand" ? st : null;
+        // 2026-11-21 the guild hall: a waiting person is never seated with a book (seated = working, at a glance); up at the desk, the mug most of the time
+        const v0 = idleDeskPose(a.id), v = v0 === "read" && isGuild(this.scene?.theme) ? "mug" : v0, st = Array.isArray(files.stand) ? files.stand[0] : files.stand;
+        const f = v === "mug" ? (files.prop?.coffee_f ?? st) : v === "look" ? (files.prop?.stand_b ?? st) : v === "stand" ? st : null;
         if (f) return { key: "stand", frames: [f] };
       }
+      if (isGuild(this.scene?.theme) && files.stand) return { key: "stand", frames: [Array.isArray(files.stand) ? files.stand[0] : files.stand] }; // (busy / meeting: standing too)
       return { key: "read_pc", frames: [files.read_pc] };
     }
     if (a.status === "done" && atDesk && !p.walking && !p.leaving && !p.bowing && this.scene?.seats && (files.read_pc || files.type_pc) && replyWaiting(this.reps?.get(a.id), a, !!this.scene?.desks?.[a.id]?.seat)) {
@@ -2379,11 +2376,14 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const away = a.status === "blocked" ? "자리 비움（승인）" : replying ? "답변 대기" : a.status === "done" ? "자리 비움（보고）" : null;
     const name = platform(a).name, border = selected ? 2 : 1.5;
     if (small) { // one line: state mark, session name, product icon; a small tail points at the person
+      const rk = agentRankKey(a), burst = rk ? this.rankBurst(rk, w) : null;
       return v_flex().w(w).h(h).items_center()
+        .when(!!burst, (e) => e.child(burst)) // ★rank: "LEVEL UP!" over the tag
         .child(h_flex().w_full().h(20).px(4).gap(4).items_center().rounded(10).bg(P.paper + "f2").border(fam && !selected ? 3 : border).border_color(fam && !selected ? st.color + "88" : st.color)
           .when(!!team, (e) => e.child(div().flex_none().w(4).h(14).rounded(2).bg(team)))
           .child(this.stateMark(st, 14))
-          .when(isGuild(this.scene?.theme) && !!a.color, (e) => e.child(div().id(`gem-${a.id}`).flex_none().w(8).h(8).rounded(2).bg(a.color).border(1).border_color("#f4e3b5").tooltip(a.model_label ?? platform(a).name))) // the guild hall: everybody looks like an adventurer, the AI model is this small gem (its colour)
+          .when(!!rk, (e) => e.child(this.rankChip(a.xp_tokens, rk, 10, a.model_label ?? platform(a).name))) // 2026-11-21 the level where the colour square was (the model is in its tooltip)
+          .when(!rk && isGuild(this.scene?.theme) && !!a.color, (e) => e.child(div().id(`gem-${a.id}`).flex_none().w(8).h(8).rounded(2).bg(a.color).border(1).border_color("#f4e3b5").tooltip(a.model_label ?? platform(a).name))) // the guild hall: everybody looks like an adventurer, the AI model is this small gem (its colour)
           .when(cmd, (e) => e.child(div().flex_none().text_size(11).font_weight(700).text_color("#d4a017").child("★"))) // ★39 the commander (a parent with children)
           .child(div().flex_1().min_w(0).whitespace_nowrap().text_size(11).font_weight(600).text_color(P.ink).child(shortText ?? this.shortName(a)))
           .when(!shortText && !!away, (e) => e.child(div().flex_none().text_size(11).text_color(a.status === "blocked" ? "#A24E00" : st.color).child(away))) // 22nd 21-N6: 자리 비움（승인） in a dark orange (#F28C28 on the pale tag was hard to read); the size stays
@@ -2398,6 +2398,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       .child(this.stateMark(st, 26).loop("opacity", { from: 0.55, to: 1, period: 900 })) // the only blinking thing
       .child(v_flex().flex_1().min_w(0).gap(3)
         .child(h_flex().gap(5).items_center().child(platformIcon(a, 12))
+          .when(!!agentRankKey(a), (e) => e.child(this.rankChip(a.xp_tokens, agentRankKey(a), 10, a.model_label ?? "")))
           .when(cmd, (e) => e.child(div().flex_none().text_size(12).font_weight(700).text_color("#d4a017").child("★")))
           .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(700).text_color(P.ink).child(this.shortName(a)))
           .child(div().flex_none().text_size(10).font_weight(600).text_color(st.color).child(this.elapsedText(a))))
@@ -2483,7 +2484,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   }
 
   hoverCard(a, r, left) {
-    const st = stateOf(a), W = 224, H = 132, mins = Math.max(0, Math.floor((Date.now() - (a.since ?? Date.now())) / 60000));
+    const st = stateOf(a), rl = this.rankLine(a, 204), W = 224, H = rl ? 152 : 132, mins = Math.max(0, Math.floor((Date.now() - (a.since ?? Date.now())) / 60000));
     const say = a.status === "blocked" ? blockedText(a) : (a.name || a.title || a.address);
     const x = Math.max(6, Math.min(left.width - W - 6, r.x + r.w / 2 - W / 2));
     const y = r.y - H - 6 >= 4 ? r.y - H - 6 : r.y + r.h + 6;
@@ -2494,6 +2495,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(700).text_color(P.ink).child(platform(a).name))
         .child(div().flex_none().text_size(10).text_color(P.muted).child(a.model_label ?? "")))
       .child(div().truncate().text_size(11).text_color(P.ink).child(say))
+      .when(!!rl, (e) => e.child(rl)) // ★rank
       .child(v_flex().gap(3)
         .child(div().w_full().h(5).rounded(3).bg("#ece8dd").child(div().h_full().w(Math.max(4, (W - 20) * frac)).rounded(3).bg(st.color)))
         .child(div().text_size(10).text_color(P.muted).child(`${st.label}${a.unknown ? "?" : ""} ${mins}분`)))

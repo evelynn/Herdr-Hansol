@@ -10,7 +10,7 @@ import { icon } from "./icons.js";
 import { closeRoom, closeRoomQuestion, findAgent, folderLabel, newRoom, newRoomHeight, normFolder, parseCommand, recentFolders, roomOps, runAgentOps, runMovePlan, spaceForIsland, stopAgent, stopQuestion } from "./actions.js";
 
 export const OP_ERROR_MS = 8000; // ★104 U12
-export const REVIEW_COMMANDS =["select", "detail", "plate", "stop", "launch", "panel", "panel-row", "panel-menu", "inbox", "feed", "chip", "room-new", "space-menu", "settings", "layout"];
+export const REVIEW_COMMANDS =["select", "detail", "plate", "stop", "launch", "panel", "panel-row", "panel-menu", "inbox", "feed", "chip", "room-new", "space-menu", "settings", "layout", "git"];
 
 export class RoomPart {
   // ★61-1 review pictures without clicks: herdr-app do hansol.<command>[:<target>] (or the target in <appHome>/hansol-aim.json).
@@ -39,6 +39,7 @@ export class RoomPart {
     else if (name === "feed") this.openFeed(); // the footer's 最近の動き (feed.js)
     else if (name === "settings") this.openSettingsMenu(); // 2026-11-19 the header's 설정 menu (main.js)
     else if (name === "layout") { if (arg) this.setLayout(arg); } // layout:office / layout:guild-dark, as the menu's rows
+    else if (name === "git") { if (arg) await this.gitCommand(arg); } // 2026-11-21 git:<space>[@<hash>[@<path>]] the Git windows (git-tree.js)
     else if (name === "chip") { const st = STATE[arg ?? "working"]; if (st) this.pressChip(st, list); } // the header's state chips: chip:<working|idle|blocked|done>
     else if (name === "panel-row") { if (arg) setShared("hansol.panel", { open: true, row: arg, at: Date.now() }); } // ★72-3 a row pressed: that terminal (t8x) in the right column's window
     return true;

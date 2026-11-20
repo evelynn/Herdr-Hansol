@@ -24,6 +24,8 @@ import { RoomPart } from "./room.js";
 import { MeetPart } from "./meet.js";
 import { PanelPart } from "./panel.js";
 import { FeedPart } from "./feed.js";
+import { GitPart } from "./git-tree.js";
+import { RankPart } from "./rank.js";
 
 const SETTINGS_MENU = { w: 300, h: 196, row: 46 }; // 2026-11-19 the "설정" menu (heading 25 + 3 rows + a line + padding)
 const FADE_MS = 0; // no fade: a fade from 0 shows the empty beige ground for ~100 ms (reviews 5); the switch is immediate
@@ -51,6 +53,8 @@ class AgentHud extends View {
     if (role === "chat" || role === "chat-body" || role === "chat-input" || role === "chat-approve") return this.initChat(cx);
     if (role === "agent-menu") return;
     if (role === "tui-prompt") return this.initTuiPrompt(cx); // ★74-3 (panel.js)
+    if (role === "git-graph") return this.initGit(cx); // 2026-11-21 the Git window (git-tree.js)
+    if (role === "git-resize") return;
     cx.timer.every(REFRESH_MS, (cx) => this.refresh(cx));
     if (role !== "band") cx.timer.every(30000, (cx) => cx.notify());
     // "hansol.chat-next" (keys.json or herdr-app do): the conversation of whoever needs you first.
@@ -155,6 +159,7 @@ class AgentHud extends View {
       if (props()?.role === "office") {
         const entries = (this.feed.state.agents ?? []).filter((a) => a.source === "app" && a.address);
         setShared("hansol.activities", Object.fromEntries(entries.map((a) => [a.address, { label: activityLabel(a), model: a.model_label || "" }])));
+        try { this.rankWatch(); } catch {} // ★rank: the spaces' levels and the level-ups (rank.js)
       }
       return true;
     } catch { return false; }
@@ -247,6 +252,8 @@ class AgentHud extends View {
     if (role === "confirm") return this.confirmView();
     if (role === "launch") return this.launchView();
     if (role === "tui-prompt") return this.tuiPromptView(); // ★74-3 (panel.js)
+    if (role === "git-graph") return this.gitGraphView(); // 2026-11-21 (git-tree.js)
+    if (role === "git-resize") return this.gitResizeView(); // the corner drag of a Git window
     if (role === "room-new") return this.roomNewView();
     if (role === "state-list") return this.stateListView(); // ★103-2 (2nd)
     if (role === "settings-menu") return this.settingsMenuView(); // 2026-11-19 layout choice
@@ -513,7 +520,7 @@ class AgentHud extends View {
 }
 
 // Office and chat live in their own files; their methods join the class here.
-for (const part of [OfficePart, ChatPart, DetailPart, GridPart, LaunchPart, RoomPart, MeetPart, PanelPart, RegionPart, FeedPart])
+for (const part of [OfficePart, ChatPart, DetailPart, GridPart, LaunchPart, RoomPart, MeetPart, PanelPart, RegionPart, FeedPart, GitPart, RankPart])
   for (const k of Object.getOwnPropertyNames(part.prototype))
     if (k !== "constructor") AgentHud.prototype[k] = part.prototype[k];
 
