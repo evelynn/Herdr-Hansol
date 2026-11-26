@@ -188,3 +188,62 @@ export function spaceFolder(space, paneList = []) {
   return String(paneList.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || space.folder || "").trim();
 }
 export const folderKey = (machine, folder) => `${machine ?? ""}|${String(folder ?? "").trim().replace(/[\\/]+/g, "/").replace(/(.)\/$/, "$1").toLowerCase()}`;
+
+// ---- 2026-11-27 the working tree side (changes, commit, push, branches) and the dev tools. These are the only writes the window makes;
+// push and a branch switch are asked for first (push: a confirm window; switch: refused while tracked files are changed).
+export const statusArgs = () => [...READ, "status", "--porcelain=v1", "-z", "--untracked-files=all"];
+// "XY path\0" (a rename: "R  new\0old\0"). staged: the index side changed; changed: the working side (or untracked).
+export function parseStatus(text) {
+  const out = [], parts = String(text ?? "").split("\0");
+  for (let i = 0; i < parts.length; i++) {
+    const e = parts[i]; if (e.length < 4) continue;
+    const x = e[0], y = e[1], path = e.slice(3), untracked = x === "?" && y === "?";
+    const item = { path, x, y, untracked, staged: !untracked && x !== " " && x !== "!", changed: untracked || (y !== " " && y !== "!") };
+    if (x === "R" || x === "C") item.from = parts[++i] ?? "";
+    out.push(item);
+  }
+  return out;
+}
+export const stageArgs = (paths) => ["add", "--", ...paths];
+export const unstageArgs = (paths) => ["restore", "--staged", "--", ...paths];
+export const commitArgs = (message) => ["commit", "-m", String(message)];
+const PLAIN = ["--no-color", "--no-ext-diff", "--no-textconv"];
+export const workDiffArgs = (item) => item.untracked ? [...READ, "diff", ...PLAIN, "--no-index", "--", "/dev/null", item.path] : [...READ, "diff", ...PLAIN, ...(item.staged && !item.changed ? ["--cached"] : []), "--", item.path];
+// No upstream yet: push sets it on the first remote (origin first).
+export function pushArgs(upstream, remotes, branch) {
+  if (upstream) return ["push"];
+  const r = (remotes ?? []).includes("origin") ? "origin" : (remotes ?? [])[0];
+  return r && branch ? ["push", "-u", r, branch] : null;
+}
+export const branchesArgs = () => [...READ, "branch", "--format=%(HEAD)%00%(refname:short)%00%(upstream:short)"];
+export const parseBranches = (t) => String(t ?? "").split("\n").filter(Boolean).map((l) => { const [h, name, up] = l.split("\0"); return { name, head: h === "*", upstream: up || null }; });
+export const switchArgs = (name) => ["switch", String(name)];
+// A switch is refused while a tracked file is changed (a switch can carry or lose them); untracked files do not count.
+export const canSwitch = (status) => !(status ?? []).some((s) => !s.untracked);
+
+// A remote's URL -> { kind: "github" | "gitlab" | "other", host, path, web } (https and ssh forms).
+export function remoteInfo(url) {
+  const u = String(url ?? "").trim();
+  const m = u.match(/^https?:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/) ?? u.match(/^(?:ssh:\/\/)?[^@\s]+@([^:/\s]+)[:/](?:\d+\/)?(.+?)(?:\.git)?\/?$/);
+  if (!m) return null;
+  const host = m[1].toLowerCase(), path = m[2];
+  return { kind: host === "github.com" ? "github" : /gitlab/.test(host) ? "gitlab" : "other", host, path, web: `https://${host}/${path}` };
+}
+export const remoteUrlArgs = (name) => [...READ, "remote", "get-url", name];
+
+// `netstat -ano -p tcp` + `tasklist /fo csv /nh` -> the listening ports [{ port, addr, pid, name }] by port (one row per port).
+export function parseListening(netstat, tasklist = "") {
+  const names = new Map();
+  for (const l of String(tasklist).split(/\r?\n/)) { const m = l.match(/^"([^"]*)","(\d+)"/); if (m) names.set(+m[2], m[1]); }
+  const seen = new Map();
+  for (const l of String(netstat ?? "").split(/\r?\n/)) {
+    const m = l.trim().match(/^TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i); if (!m) continue;
+    const port = +m[2], pid = +m[3]; if (!seen.has(port)) seen.set(port, { port, addr: m[1], pid, name: names.get(pid) ?? "" });
+  }
+  return [...seen.values()].sort((a, b) => a.port - b.port);
+}
+// .env against .env.example: the keys the example has and .env lacks (names only: values are never read out).
+export const envKeys = (text) => String(text ?? "").split(/\r?\n/).map((l) => l.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/)?.[1]).filter(Boolean);
+export const envMissing = (example, env) => { const have = new Set(envKeys(env)); return envKeys(example).filter((k) => !have.has(k)); };
+// package.json's scripts -> [{ name, cmd }] (the "프로젝트 명령" list; a broken file is no list).
+export function packageScripts(text) { try { return Object.entries(JSON.parse(String(text)).scripts ?? {}).map(([name, cmd]) => ({ name, cmd: String(cmd) })); } catch { return []; } }

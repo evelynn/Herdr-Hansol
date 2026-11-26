@@ -1,0 +1,963 @@
+{
+  "_help": "The flower village square (open-air plaza, its own planner py/hansol-meadow.py). Background sheets m1-m6 are drawn for this theme only; a missing character sheet comes from guild-dark as it is.",
+  "version": 1,
+  "theme": "guild-meadow",
+  "fallback": "guild-dark",
+  "recolor": "pastel",
+  "backdrop": "#2a2d31",
+  "ambient": [
+    1.0,
+    0.99,
+    0.96
+  ],
+  "light_scale": 0.25,
+  "robe_key": "#D02FC0",
+  "classes": [
+    "wizard",
+    "fighter",
+    "rogue",
+    "cleric",
+    "barbarian",
+    "bard",
+    "druid",
+    "monk",
+    "paladin",
+    "ranger",
+    "sorcerer",
+    "warlock"
+  ],
+  "sheets": [
+    {
+      "key": "ground",
+      "file": "m1-ground.png",
+      "rows": [
+        [
+          "cobble_a",
+          "cobble_b",
+          "cobble_c"
+        ],
+        [
+          "grass_a",
+          "grass_b",
+          "path"
+        ]
+      ]
+    },
+    {
+      "key": "houses",
+      "file": "m2-houses.png",
+      "rows": [
+        [
+          "ref_tile",
+          "house_l",
+          "house_r"
+        ],
+        [
+          "house_l2",
+          "house_r2",
+          "hall"
+        ]
+      ]
+    },
+    {
+      "key": "stall",
+      "file": "m3-stall.png",
+      "rows": [
+        [
+          "ref_tile",
+          "stall_l",
+          "stall_r"
+        ],
+        [
+          "table_l",
+          "table_r",
+          "stool",
+          "sign"
+        ]
+      ]
+    },
+    {
+      "key": "landmarks",
+      "file": "m4-landmarks.png",
+      "rows": [
+        [
+          "ref_tile",
+          "fountain",
+          "notice_board"
+        ],
+        [
+          "post_box",
+          "gate_arch",
+          "plaque"
+        ]
+      ]
+    },
+    {
+      "key": "nature",
+      "file": "m5-nature.png",
+      "rows": [
+        [
+          "ref_tile",
+          "tree",
+          "flower_bed",
+          "bush"
+        ],
+        [
+          "fence_l",
+          "fence_r",
+          "lamp"
+        ]
+      ]
+    },
+    {
+      "key": "decor",
+      "file": "m6-decor.png",
+      "rows": [
+        [
+          "ref_tile",
+          "flower_cart",
+          "crates",
+          "barrel"
+        ],
+        [
+          "well",
+          "planter",
+          "bench_l",
+          "bench_r"
+        ]
+      ]
+    },
+    {
+      "key": "wizard_poses",
+      "file": "c-wizard-poses.png",
+      "class": "wizard",
+      "kind": "poses",
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "wizard_walk",
+      "file": "c-wizard-walk.png",
+      "class": "wizard",
+      "kind": "walk",
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "fighter_poses",
+      "file": "c-fighter-poses.png",
+      "class": "fighter",
+      "kind": "poses",
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "fighter_walk",
+      "file": "c-fighter-walk.png",
+      "class": "fighter",
+      "kind": "walk",
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "rogue_poses",
+      "file": "c-rogue-poses.png",
+      "class": "rogue",
+      "kind": "poses",
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "rogue_walk",
+      "file": "c-rogue-walk.png",
+      "class": "rogue",
+      "kind": "walk",
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "cleric_poses",
+      "file": "c-cleric-poses.png",
+      "class": "cleric",
+      "kind": "poses",
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "cleric_walk",
+      "file": "c-cleric-walk.png",
+      "class": "cleric",
+      "kind": "walk",
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "barbarian_poses",
+      "file": "c-barbarian-poses.png",
+      "class": "barbarian",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "barbarian_walk",
+      "file": "c-barbarian-walk.png",
+      "class": "barbarian",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "bard_poses",
+      "file": "c-bard-poses.png",
+      "class": "bard",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "bard_walk",
+      "file": "c-bard-walk.png",
+      "class": "bard",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "druid_poses",
+      "file": "c-druid-poses.png",
+      "class": "druid",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "druid_walk",
+      "file": "c-druid-walk.png",
+      "class": "druid",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "monk_poses",
+      "file": "c-monk-poses.png",
+      "class": "monk",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "monk_walk",
+      "file": "c-monk-walk.png",
+      "class": "monk",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "paladin_poses",
+      "file": "c-paladin-poses.png",
+      "class": "paladin",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "paladin_walk",
+      "file": "c-paladin-walk.png",
+      "class": "paladin",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "ranger_poses",
+      "file": "c-ranger-poses.png",
+      "class": "ranger",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "ranger_walk",
+      "file": "c-ranger-walk.png",
+      "class": "ranger",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "sorcerer_poses",
+      "file": "c-sorcerer-poses.png",
+      "class": "sorcerer",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "sorcerer_walk",
+      "file": "c-sorcerer-walk.png",
+      "class": "sorcerer",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "warlock_poses",
+      "file": "c-warlock-poses.png",
+      "class": "warlock",
+      "kind": "poses",
+      "required": false,
+      "rows": [
+        [
+          "stand_f",
+          "stand_b",
+          "wave_f"
+        ],
+        [
+          "write",
+          "read"
+        ],
+        [
+          "give_f",
+          "mug_f",
+          "mug_b"
+        ]
+      ]
+    },
+    {
+      "key": "warlock_walk",
+      "file": "c-warlock-walk.png",
+      "class": "warlock",
+      "kind": "walk",
+      "required": false,
+      "rows": [
+        [
+          "f1",
+          "f2",
+          "f3",
+          "f4"
+        ],
+        [
+          "f5",
+          "f6",
+          "f7",
+          "f8"
+        ],
+        [
+          "b1",
+          "b2",
+          "b3",
+          "b4"
+        ],
+        [
+          "b5",
+          "b6",
+          "b7",
+          "b8"
+        ]
+      ]
+    },
+    {
+      "key": "wizard_work",
+      "file": "c-wizard-work.png",
+      "class": "wizard",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "fighter_work",
+      "file": "c-fighter-work.png",
+      "class": "fighter",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "rogue_work",
+      "file": "c-rogue-work.png",
+      "class": "rogue",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "cleric_work",
+      "file": "c-cleric-work.png",
+      "class": "cleric",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "barbarian_work",
+      "file": "c-barbarian-work.png",
+      "class": "barbarian",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "bard_work",
+      "file": "c-bard-work.png",
+      "class": "bard",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "druid_work",
+      "file": "c-druid-work.png",
+      "class": "druid",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "monk_work",
+      "file": "c-monk-work.png",
+      "class": "monk",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "paladin_work",
+      "file": "c-paladin-work.png",
+      "class": "paladin",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "ranger_work",
+      "file": "c-ranger-work.png",
+      "class": "ranger",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "sorcerer_work",
+      "file": "c-sorcerer-work.png",
+      "class": "sorcerer",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    },
+    {
+      "key": "warlock_work",
+      "file": "c-warlock-work.png",
+      "class": "warlock",
+      "kind": "work",
+      "required": false,
+      "rows": [
+        [
+          "write_a",
+          "write_b",
+          "write_c"
+        ]
+      ]
+    }
+  ]
+}

@@ -18,6 +18,7 @@ Run once per call; the Herdr HUD mod calls it every few seconds.
 """
 import argparse
 from datetime import datetime
+import functools
 import hashlib
 import json
 import os
@@ -29,7 +30,6 @@ import subprocess
 import sys
 import time
 import urllib.parse
-import urllib.request
 
 HOME = Path.home()
 LOCAL = Path(os.environ.get('LOCALAPPDATA') or HOME / 'AppData' / 'Local')
@@ -43,6 +43,7 @@ T3_RECENT_MS = 3 * 60 * 60 * 1000    # T3 threads shown when active this recentl
 T3_DONE_MS = 10 * 60 * 1000          # a finished T3 run reads "done" this long
 NO_WINDOW = 0x08000000               # CREATE_NO_WINDOW: no console flash from a GUI parent
 TAIL_BYTES = 512 * 1024
+TUI_IDLE_RECHECK_MS = 30 * 1000      # a herdr TUI with no agents is asked again after this long (a new TUI agent shows within 30 s)
 _MODEL = re.compile(rb'"model":"([^"]+)"')
 
 
@@ -59,7 +60,8 @@ def iso_ms(text):
         return None
 
 
-def herdr_cli():
+@functools.lru_cache(maxsize=1)
+def herdr_cli():                         # once per run: shutil.which walks the whole PATH (~0.04 s a call)
     found = shutil.which('herdr')
     if found:
         return found
@@ -395,6 +397,10 @@ def collect_tui(table, sessions, transcripts, cache, errors):
     if not herdr:
         errors['tui'] = 'herdr를 찾을 수 없습니다'
         return agents
+    # The snapshot is the slowest part of a run (~0.7 s, every 4 s). While the TUI has no agents it is asked only every TUI_IDLE_RECHECK_MS.
+    idle_at = cache.get('tui_idle_at') or 0
+    if idle_at and now_ms() - idle_at < TUI_IDLE_RECHECK_MS:
+        return agents
     try:
         # One call for agents, workspaces and tabs (each herdr start costs ~0.3 s).
         snapshot = run_json([herdr, 'api', 'snapshot'])['result']['snapshot']
@@ -402,6 +408,7 @@ def collect_tui(table, sessions, transcripts, cache, errors):
     except (RuntimeError, ValueError, KeyError) as exc:
         errors['tui'] = str(exc)
         return agents
+    cache['tui_idle_at'] = 0 if listing else now_ms()
     spaces = {w['workspace_id']: w.get('label') or '' for w in snapshot.get('workspaces', [])}
     tabs = {t['tab_id']: t.get('label') or '' for t in snapshot.get('tabs', [])}
     pids = cache.setdefault('tui_pids', {})
@@ -427,7 +434,7 @@ def collect_tui(table, sessions, transcripts, cache, errors):
             'id': f'tui:{pane}', 'source': 'tui', 'address': pane,
             'name': agent.get('name') or agent.get('terminal_title_stripped') or pane,
             'title': agent.get('terminal_title_stripped') or '',
-            'space': spaces.get(agent.get('workspace_id'), ''), 'tab': tabs.get(agent.get('tab_id'), ''),
+            'space': spaces.get(agent.get('workspace_id'), ''), 'space_id': agent.get('workspace_id') or '', 'tab': tabs.get(agent.get('tab_id'), ''),
             'cwd': agent.get('cwd'),
             'app': agent.get('agent'), 'status': agent.get('agent_status') or 'unknown',
             'blocked_kind': None, 'blocked_msg': None,
@@ -665,6 +672,9 @@ def _scan_claude(path, size, st, budget):
     return end, st[0] >= size
 
 
+SUB_LIVE_S = 90   # shortcut: a sub-agent counts as running while its transcript was written in the last 90 s (one long tool call can hide it; a finished one stays up to 90 s)
+
+
 def collect_xp(cache, projects=None):
     """{'sessions': {Claude session id: output tokens (with its subagents)}, 'pending': bool}."""
     projects = projects or PROJECTS
@@ -672,8 +682,10 @@ def collect_xp(cache, projects=None):
     files = cache.setdefault('xp_files', {})
     started, budget, pending = time.monotonic(), XP_BUDGET_BYTES, False
     found = sorted(_xp_claude_files(projects), key=lambda x: -x[2])   # the live sessions first
-    sessions = {}
-    for path, size, _mtime, sid in found:
+    sessions, live, now = {}, {}, time.time()
+    for path, size, mtime, sid in found:
+        if os.sep + 'subagents' + os.sep in path and now - mtime < SUB_LIVE_S:
+            live[sid] = live.get(sid, 0) + 1
         st = files.setdefault(path, [0, 0, '', 0])
         if size != st[0]:
             if budget > 0 and time.monotonic() - started < XP_BUDGET_S:
@@ -688,7 +700,7 @@ def collect_xp(cache, projects=None):
         sessions[sid] = sessions.get(sid, 0) + st[1] + st[3]
     for stale in set(files) - {x[0] for x in found}:
         del files[stale]
-    return {'sessions': sessions, 'pending': pending}
+    return {'sessions': sessions, 'pending': pending, 'live_subagents': live}
 
 
 # ---------------------------------------------------------------- memory (for the clean-up candidates)
@@ -854,9 +866,9 @@ STATES = ('blocked', 'working', 'done', 'idle')
 ORDER = {'blocked': 0, 'done': 1, 'working': 2, 'idle': 3}
 
 
-FREE_TITLE = 'フリーデスク'                                  # ★68-2: the island of the people in no space (office.py: is_free)
+FREE_TITLE = '공간 없음'                                  # ★68-2: the island of the people in no space (office.py: is_free)
 FREE_ISLAND = 'free:' + FREE_TITLE
-FREE_SPACE_NAME = 'フリー'                                    # ★95: the App space the free desk's agents are in (actions.js FREE_NAME)
+FREE_SPACE_NAME = '공간 없음'                                    # ★95: the App space the free desk's agents are in (actions.js FREE_NAME)
 
 
 def island_of(agent):
@@ -953,16 +965,20 @@ MSG_NEW_TURNS = 2              # ★88-6 a terminal first seen with at most this
 MSG_SEEN_KEEP = 80
 SHELL_IDLE_READ_MAX = 4
 
-def has_background_shell(text):
-    """Recognize a live background-shell count in the terminal's footer only."""
+def background_shells(text):
+    """The live background-shell count in the terminal's footer only (Codex: "N background terminals running", Claude Code: "N shells")."""
     for line in reversed(str(text or '').splitlines()[-12:]):
         codex = re.search(r'(?i)\b(\d+)\s+background\s+terminals?\s+running\b', line)
         if codex:
-            return int(codex.group(1)) > 0
+            return int(codex.group(1))
         if re.search(r'(?i)auto mode|bypass|shift\+tab|accept edits', line):
             shell = re.search(r'(?i)\b(\d+)\s+shells?\b', line)
-            return bool(shell and int(shell.group(1)) > 0)
-    return False
+            return int(shell.group(1)) if shell else 0
+    return 0
+
+
+def has_background_shell(text):
+    return background_shells(text) > 0
 
 def is_waiting_for_shell(text):
     """Only explicit current-turn terminal-wait lines qualify."""
@@ -1042,6 +1058,7 @@ def scan_messages(cache, api=None, now=None):
             st['seen'].pop(gone, None)
             st.get('activity', {}).pop(gone, None)
             st.get('shell_active', {}).pop(gone, None)
+            st.get('shell_count', {}).pop(gone, None)
             st.get('shell_waiting', {}).pop(gone, None)
         moved = []
         for t in terms:
@@ -1073,7 +1090,8 @@ def scan_messages(cache, api=None, now=None):
             except (OSError, ValueError, RuntimeError):
                 continue
             read += 1
-            st.setdefault('shell_active', {})[addr] = has_background_shell(text)
+            st.setdefault('shell_count', {})[addr] = background_shells(text)
+            st.setdefault('shell_active', {})[addr] = st['shell_count'][addr] > 0
             st.setdefault('shell_waiting', {})[addr] = is_waiting_for_shell(text)
             activity = recent_activity(text)
             if activity:
@@ -1237,10 +1255,12 @@ def collect(cache, sources=None):
             pass
     activities = (cache.get('msg_scan') or {}).get('activity', {})
     shells = (cache.get('msg_scan') or {}).get('shell_active', {})
+    shell_n = (cache.get('msg_scan') or {}).get('shell_count', {})
     waits = (cache.get('msg_scan') or {}).get('shell_waiting', {})
     for agent in agents:
         if agent.get('source') == 'app':
             agent['shell_active'] = bool(shells.get(agent.get('address')))
+            agent['shells'] = int(shell_n.get(agent.get('address')) or 0)
             agent['shell_waiting'] = bool(waits.get(agent.get('address')))
         if agent.get('source') == 'app' and agent.get('status') == 'working':
             agent['activity'] = activities.get(agent.get('address'))
@@ -1255,6 +1275,8 @@ def collect(cache, sources=None):
         xp = {'sessions': {}, 'pending': False, 'error': str(exc)[:120]}
     for agent in agents:
         agent['xp_tokens'] = xp['sessions'].get(agent.get('session_id')) if agent.get('session_id') else None
+        if agent.get('session_id'):                   # Claude Code's own sub-agents (Task/Agent tool), next to T3's helpers
+            agent['helpers'] = max(int(agent.get('helpers') or 0), xp.get('live_subagents', {}).get(agent['session_id'], 0))
     counts = {key: sum(1 for a in agents if a['status'] == key) for key in ORDER}
     counts['long_idle'] = sum(1 for a in agents if a['long_idle'])
     by_source = {key: sum(1 for a in agents if a['source'] == key) for key in ('t3', 'tui', 'app')}
@@ -1324,6 +1346,7 @@ def find_place(name, cache):
     saved = cache.get('weather_place') or {}
     if saved.get('place') == name and isinstance(saved.get('lat'), (int, float)):
         return saved['lat'], saved['lon'], saved.get('label') or name
+    import urllib.request                                 # here, not at the top: it costs ~0.3 s to import and the weather is asked at most every 30 minutes
     query = urllib.parse.urlencode({'name': name, 'count': 1, 'language': 'en', 'format': 'json'})
     try:
         with urllib.request.urlopen('https://geocoding-api.open-meteo.com/v1/search?' + query, timeout=5) as resp:
@@ -1349,9 +1372,9 @@ def weather_place(settings, cache=None):
 
 def collect_weather(cache, settings=None):
     """state.json `weather`: {kind, code, temp, is_day, sunrise, sunset (epoch ms), label, at}. Asked at most every 30 minutes; when the request fails the
-    previous value is kept, and a value older than 3 hours is not used (None). `enabled: false` never asks."""
+    previous value is kept, and a value older than 3 hours is not used (None). Off unless `enabled: true` (the office then shows clear weather)."""
     settings = settings or {}
-    if settings.get('enabled') is False:
+    if settings.get('enabled') is not True:
         return None
     current = now_ms()
     saved = cache.get('weather') or {}
@@ -1360,6 +1383,7 @@ def collect_weather(cache, settings=None):
         return data
     place = weather_place(settings, cache)
     if place:
+        import urllib.request                             # see find_place
         lat, lon, label = place
         query = urllib.parse.urlencode({'latitude': lat, 'longitude': lon, 'current': 'weather_code,temperature_2m,is_day',
                                         'daily': 'sunrise,sunset', 'timezone': 'auto', 'forecast_days': 1})
@@ -1642,6 +1666,38 @@ def prompt_tui(agent_id, text, state_path, runner=None):
     return {'id': agent_id, 'ok': True}
 
 
+def close_tui(target, state_path, runner=None):
+    """Close a herdr TUI pane (target 'tui:<pane>', an agent id) or a whole TUI workspace (target 'space:<workspace_id>').
+    The office asks the person first; only targets that state.json lists as TUI are closed. Returns a dict."""
+    try:
+        state = json.loads(state_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {'id': target, 'ok': False, 'error': 'state.json을 읽을 수 없습니다'}
+    tuis = [a for a in state.get('agents', []) if a.get('source') == 'tui']
+    target = str(target or '')
+    if target.startswith('space:'):
+        wid = target[len('space:'):]
+        if not wid or not any(a.get('space_id') == wid for a in tuis):
+            return {'id': target, 'ok': False, 'error': '찾을 수 없습니다 (이미 닫혔거나 아직 수집되지 않았습니다)'}
+        verb = ['workspace', 'close', wid]
+    else:
+        agent = next((a for a in tuis if a['id'] == target), None)
+        if not agent:
+            return {'id': target, 'ok': False, 'error': '찾을 수 없습니다 (이미 닫혔거나 아직 수집되지 않았습니다)'}
+        verb = ['pane', 'close', agent['address']]
+    herdr = herdr_cli()
+    if not herdr:
+        return {'id': target, 'ok': False, 'error': 'herdr를 찾을 수 없습니다'}
+    try:
+        result = (runner or subprocess.run)([herdr, *verb], capture_output=True, timeout=15, creationflags=NO_WINDOW if os.name == 'nt' else 0)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {'id': target, 'ok': False, 'error': f'{exc.__class__.__name__}: {exc}'}
+    if result.returncode:
+        out = (result.stdout or b'').decode('utf-8', 'replace').strip() + ' ' + (result.stderr or b'').decode('utf-8', 'replace').strip()
+        return {'id': target, 'ok': False, 'error': out.strip()[:300]}
+    return {'id': target, 'ok': True}
+
+
 def write_atomic(path, text):
     """Replace path; a reader holding it open on Windows makes os.replace fail
     for a moment (WinError 5), so retry briefly before giving up."""
@@ -1696,6 +1752,7 @@ def main(argv=None):
     parser.add_argument('--limit', type=int, default=40)
     parser.add_argument('--prompt', metavar='AGENT_ID', help='★74-3: send --text to a herdr TUI agent (herdr agent prompt) and exit')
     parser.add_argument('--text', default='')
+    parser.add_argument('--close-tui', metavar='TARGET', help="close a herdr TUI pane ('tui:<pane>') or workspace ('space:<id>') and exit")
     parser.add_argument('--config', type=Path, default=APP_HOME / 'mods' / 'hansol' / 'config.json',
                         help="the mod's config.json (officeSettings.sources decides which boxes are collected)")
     parser.add_argument('--demo-size', type=int, default=0, help='with --demo: a big cast of this many agents (e.g. 40)')
@@ -1718,6 +1775,9 @@ def main(argv=None):
         return 0
     if ns.prompt:
         sys.stdout.buffer.write(json.dumps(prompt_tui(ns.prompt, ns.text, ns.out), ensure_ascii=False).encode('utf-8'))
+        return 0
+    if ns.close_tui:
+        sys.stdout.buffer.write(json.dumps(close_tui(ns.close_tui, ns.out), ensure_ascii=False).encode('utf-8'))
         return 0
     if ns.conversation:
         out = json.dumps(conversation(ns.conversation, ns.limit, ns.out), ensure_ascii=False)

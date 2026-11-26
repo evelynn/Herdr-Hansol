@@ -2,7 +2,7 @@
 """The guild hall (dark) layout's floor plan: the office's own planner (hansol-office.py) is not touched.
 
 Called by office.js like the office planner when shared "hansol.layout" is "guild-dark":
-    hansol-guild.py --agents JSON --box WxH [--demo] [--config JSON]
+    hansol-guild.py --agents JSON --box WxH [--demo] [--config JSON] [--theme guild-dark|guild-meadow]
     hansol-guild.py --check          -> {"ready": n, "total": m, "sheets": [...]} (the menu's "그림 n/m")
     hansol-guild.py --preview PNG    -> the plan as one picture (people seated), for a look without the App
 
@@ -41,6 +41,20 @@ DOOR_RUN = 6                         # the door's wall section (as tall as the w
 WALL_TOP = 210                       # px over the floor's back corner: room for the walls' height
 OUT = APP_HOME / 'hansol-office' / 'guild'
 REL = 'hansol-office/guild'
+
+
+def use_theme(theme):
+    """The theme's own folders (gs.use sets the sheets ones): every output path made from OUT takes the theme's
+    value again - a guild-meadow run writes hansol-office/meadow/. Import time is guild-dark, as it has always been."""
+    gs.use(theme)
+    global OUT, REL, PEOPLE_CACHE, AMBIENT, LIGHT_K
+    s = gs.spec()
+    AMBIENT = tuple(s.get('ambient', AMBIENT))           # the meadow: plain daylight, not the hall's dim between the fires
+    LIGHT_K = float(s.get('light_scale', LIGHT_K))
+    out = gs.THEMES[theme][1]
+    OUT = APP_HOME / 'hansol-office' / out
+    REL = f'hansol-office/{out}'
+    PEOPLE_CACHE = OUT / 'people-cache.json'
 
 
 # ---------------------------------------------------------------- files
@@ -242,6 +256,7 @@ def even(n):
 WARM = (1.0, 0.62, 0.30)
 COOL = (0.45, 0.58, 1.0)
 AMBIENT = (0.70, 0.68, 0.76)     # the hall between the fires: dim, but every thing stays readable
+LIGHT_K = 1.0                    # the lights' strength (a theme's sheets.json light_scale: the meadow's day square, softer pools)
 GROUP_GAP = 3                    # extra tiles between two workspaces' bands of tables: the zone's standard row, then two rows of plain stone
 BANNER_K = 1.3                   # the standards' scale in the hall: big enough to carry the workspace's name on the cloth
 PERIODS = ('morning', 'day', 'evening', 'night')
@@ -262,7 +277,7 @@ def light_map(W, H, lights):
         if x0 >= x1 or y0 >= y1:
             continue
         yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
-        f = s * np.exp(-(((xx - x) ** 2 + ((yy - y) * 2.0) ** 2) / (r * r)))
+        f = s * LIGHT_K * np.exp(-(((xx - x) ** 2 + ((yy - y) * 2.0) ** 2) / (r * r)))
         L[y0:y1, x0:x1] += f[..., None] * np.array(col, np.float32)
     return np.clip(L, 0, 1.3)
 
@@ -847,7 +862,7 @@ def plan(agents, demo=False, preview=None):
 
     inside = [door_mid, 1]
     scene = {
-        'theme': sheets.get('theme', 'guild-dark'), 'l86': True, 'native': True, 'scale': 1.0, 'people_scale': 1.0,
+        'theme': sheets.get('theme', 'guild-dark'), 'backdrop': sheets.get('backdrop'), 'l86': True, 'native': True, 'scale': 1.0, 'people_scale': 1.0,
         'width': hall.W, 'height': hall.H,
         'grid': {'origin': [hall.ox, hall.oy], 'tw': TW, 'th': TH, 'cols': C, 'rows': R,
                  'walk': [''.join(r) for r in hall.walk], 'floor': ['1' * C for _ in range(R)]},
@@ -1024,7 +1039,8 @@ def render_preview(scene, out_path, grid=False, period='day'):
     def load(rel):
         return Image.open(APP_HOME / rel).convert('RGBA')
     W, H = scene['width'], scene['height']
-    img = Image.new('RGBA', (W, H), (16, 24, 39, 255))
+    bd = scene.get('backdrop') or '#101827'            # the colour round the floor (as office.js)
+    img = Image.new('RGBA', (W, H), tuple(int(bd[i:i + 2], 16) for i in (1, 3, 5)) + (255,))
     for t in scene['background_tiles']:
         b, r = t.get('bleed', 0), t['rect']
         img.alpha_composite(load(t['file']).crop((b, b, b + r[2], b + r[3])), (int(r[0]), int(r[1])))
@@ -1062,7 +1078,9 @@ def main():
     ap.add_argument('--check', action='store_true')
     ap.add_argument('--preview', default=None)
     ap.add_argument('--grid', action='store_true')
+    ap.add_argument('--theme', default='guild-dark', choices=('guild-dark', 'guild-meadow'))   # the background: the dark hall / the bright flower meadow town
     args = ap.parse_args()
+    use_theme(args.theme)
     state = gs.check()
     if args.check:
         print(json.dumps(state, ensure_ascii=False))

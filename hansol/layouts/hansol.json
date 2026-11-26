@@ -2,15 +2,15 @@
   "id": "root",
   "type": "column",
   "titlebar": "none",
-  "theme": "graphite",
+  "theme": "mosses",
   "ui_font": "Geist",
   "font_size": 13,
-  "background": "#101827",
+  "background": "#050914",
   "colors": {
-    "background": "#151e2e",
-    "foreground": "#e7edf6",
-    "border": "#344256",
-    "accent": "#7465db"
+    "background": "#070c18",
+    "foreground": "#e8f0fa",
+    "border": "#22364f",
+    "accent": "#56d3ea"
   },
   "terminal_padding": [
     12,

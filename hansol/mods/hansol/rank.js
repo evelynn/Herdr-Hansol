@@ -21,9 +21,9 @@ export class RankPart {
     const levels = {}, names = {};
     for (const a of s.agents ?? []) { const k = agentRankKey(a); if (k) { levels[k] = rankOf(a.xp_tokens).level; names[k] = a.labels?.display || a.name || a.address; } }
     const now = Date.now();
-    for (const u of levelUps(this.rankSeen, levels)) {
+    for (const u of levelUps(this.rankSeen, levels)) { // MOSSES shows no levels (2026-11-27): remembered, no toast
       this.rankFx.set(u.key, now + FX_MS);
-      try { notify({ title: "레벨 업", body: `${names[u.key]}: Lv.${u.from} → Lv.${u.to} (${tierOf(u.to).name})`, level: "success", timeout: 6000 }); } catch {}
+      if (!this.isMosses?.()) try { notify({ title: "레벨 업", body: `${names[u.key]}: Lv.${u.from} → Lv.${u.to} (${tierOf(u.to).name})`, level: "success", timeout: 6000 }); } catch {}
     }
   }
   rankFxOn(key) { return !!key && (this.rankFx?.get(key) ?? 0) > Date.now(); }

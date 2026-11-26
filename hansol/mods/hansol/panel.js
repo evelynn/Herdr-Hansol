@@ -5,7 +5,7 @@ import { div, image } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { appHome, closeOverlay, exec, hc, openOverlay, panes, props, readTextFile, run, shared, spaces, writeTextFile } from "herdr";
 import { normFolder, moveToFreePlan, moveByLabelPlan, isWorker, teamMembers, teamPlan, teamSpaceState, teamFixPlan, AGENT_KINDS, FREE_NAME, FREE_SPACE, SHELL_KIND } from "./actions.js";
-import { P, STATE, dot, platformIcon, answeredView } from "./common.js";
+import { RAD, P, STATE, dot, platformIcon, answeredView } from "./common.js";
 import { iconBtn, inlineRename, renameState, splitHandle } from "./ui.js";
 import { cleanWidths, LEFT_W, ellipsize, nameEm, clipName, tidyCut, UI, PANEL_HINT } from "./ui-rules.js";
 import { icon } from "./icons.js";
@@ -31,7 +31,7 @@ export function rowTags(W, r, o = {}) {
   const GAP = 5, nest = r.nest ?? 0, acts = !!o.acts, tui = !!r.tui;
   // ★10 left: "⋯" only on the chosen row (o.more; default true = the old drawing). A row without it gives that width (BTN + gap) to the name. `acts` (hover / after "⋯") shows the pencil / trash instead.
   const more = o.more ?? true;
-  const right = tui ? [] : acts ? (o.ag ? [BTN, BTN] : [BTN]) : (more ? [BTN] : []);          // the pencil / trash, or the pale "⋯", or nothing
+  const right = tui ? (acts ? [BTN] : []) : acts ? (o.ag ? [BTN, BTN] : [BTN]) : (more ? [BTN] : []);          // the pencil / trash, or the pale "⋯", or nothing
   const left = [...(nest > 0 ? [14 * (nest - 1), 14] : []), isDraggable(r) ? 24 : 20, 16, 20, ...(r.kids > 0 ? [UI.hit] : []), ...(r.star ? [18] : [])];
   const inner = W - 14 - 10, fixed = 14 + left.reduce((n, x) => n + x, 0) + right.reduce((n, x) => n + x, 0);
   const tags = [];
@@ -79,8 +79,8 @@ export const listName = (r, tg) => {
 };
 // 25th L4: a space heading cut by the room that is left (the pencil / "⋯" / "＋" and the count badge are counted), with the same tidy cut.
 export const headText = (W, label, count, o = {}) => {
-  const s = String(label ?? ""), n = 3 + (o.more ? 1 : 0) + (o.plus ? 1 : 0);
-  const avail = (W - 24 - 10 - UI.hit - 20 - 5 * (n - 1) - 8 - Math.max(24, 14 + String(count ?? "").length * 10) - (o.more ? BTN : 0) - (o.plus ? BTN : 0)) * 0.94;
+  const s = String(label ?? ""), n = 3 + (o.more ? 1 : 0) + (o.plus ? 1 : 0) + (o.trash ? 1 : 0);
+  const avail = (W - 24 - 10 - UI.hit - 20 - 5 * (n - 1) - 8 - Math.max(24, 14 + String(count ?? "").length * 10) - (o.more ? BTN : 0) - (o.plus ? BTN : 0) - (o.trash ? BTN : 0)) * 0.94;
   return nameEm(s) * UI.text.body <= avail ? s : tidyCut(clipName(s, Math.max(2, avail / UI.text.body)));
 };
 
@@ -88,7 +88,7 @@ export const headText = (W, label, count, o = {}) => {
 export const nameCut = (r, tg) => !!r?.label && nameEm(r.label) * UI.text.body > (tg?.namePx ?? Infinity);
 
 // ★105 N6/N3: hc's `agent` is also the program name of a plain terminal ("powershell.exe", "node"); an agent is one that reports a status or is a known kind.
-export const isAgentTerm = (h) => !!h && (!!h.status || /claude|codex|cursor|opencode|antigravity|gemini|agy/i.test(String(h.agent ?? "")));
+export const isAgentTerm = (h) => !!h && (!!h.status || /claude|codex|cursor|opencode|antigravity|gemini|agy|atlas/i.test(String(h.agent ?? "")));
 // The tree from spaces() / panes() and hc's terminal list (pure: the tests hand in plain lists).
 // Returns [{ kind: "space" | "tab" | "term", key, label, depth, address?, status?, star?, child? }], at most PANEL_ROWS_MAX terminal rows.
 // Where a terminal belongs is hc's `where` ("<space> / <tab>"), as the collector decides the office's rooms (island_of): a terminal kept in a
@@ -140,10 +140,10 @@ export function panelRows(spaceList = [], paneList = [], hcTerms = [], agentList
     for (const t of free) term(t.address, t.name || t.agent, 1, t.status);
   }
   // ★74-3: the herdr TUI's agents (source "tui"; the App cannot list them): under a grey "TUI" space line per TUI space, after the App's own rows.
-  // Never moved / stopped / ended from here (the TUI's own operations are not ours); pressing one reads it, "指示を送る" sends to it (herdr agent prompt).
+  // Never moved / stopped from here; pressing one reads it, "指示を送る" sends to it (herdr agent prompt). The trash closes the TUI pane / workspace (asked first; collector --close-tui).
   const tuis = agentList.filter((a) => a?.source === "tui" && a.address);
   for (const sp of [...new Set(tuis.map((a) => a.space || ""))]) {
-    rows.push({ kind: "space", key: `tui-${sp}`, label: `${sp || "(공간 없음)"}`, depth: 0, tui: true });
+    rows.push({ kind: "space", key: `tui-${sp}`, label: `${sp || "(공간 없음)"}`, depth: 0, tui: true, tuiSpaceId: tuis.find((x) => (x.space || "") === sp && x.space_id)?.space_id ?? null });
     for (const a of tuis.filter((x) => (x.space || "") === sp)) {
       if (n >= PANEL_ROWS_MAX) break; n++;
       rows.push({ kind: "term", key: `tui-${a.address}`, label: a.name || a.address, depth: 1, nest: 0, app: a.app ?? null, shell: false, address: a.address, status: a.status ?? null, star: false, child: false, kids: 0, folded: false,
@@ -249,8 +249,8 @@ export class PanelPart {
         .child(Input.new(this.tpText))
         .child(div().min_h(16).text_size(11).text_color("#d6455d").child(f.error ?? (blocked ? "승인 대기 중입니다. 먼저 승인 화면에서 응답해 주세요." : "")))))
       .child(h_flex().flex_none().gap(10).justify_end()
-        .child(div().id("tuip-cancel").flex_none().px(16).py(8).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink).cursor_pointer().on_click(() => closeOverlay(p.overlay)).child("취소"))
-        .child(div().id("tuip-go").flex_none().px(16).py(8).rounded(8).bg("#1e6fe0").text_size(13).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(send).child(f.busy ? "전송 중…" : "전송")));
+        .child(div().id("tuip-cancel").flex_none().px(16).py(8).rounded(RAD(8)).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink).cursor_pointer().on_click(() => closeOverlay(p.overlay)).child("취소"))
+        .child(div().id("tuip-go").flex_none().px(16).py(8).rounded(RAD(8)).bg(P.solid).text_size(13).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(send).child(f.busy ? "전송 중…" : "전송")));
   }
 
   // ---- ★84 the left list: space -> agent (two levels), a drag handle on every row, hover icons, the legend folded at the bottom.
@@ -329,15 +329,22 @@ export class PanelPart {
     const same = !!cur && !!key && (sp ?? []).find((s) => s.name === cur.space)?.id === key; // the person's folder goes along only when this is their room
     this.newAgentFor(key, same ? cur : null);
   }
+  // Atlas Code (atlas-tui project): the room "새 에이전트" would use, started at once
+  newAtlasOpen(shown, sp, list) {
+    const key = this.newAgentKey(shown, sp, list), cur = (list ?? []).find((x) => x.id === this.selId && x.source !== "tui") ?? null;
+    const same = !!cur && !!key && (sp ?? []).find((s) => s.name === cur.space)?.id === key;
+    this.panelMsg = null; this.spMenu = null;
+    this.openLaunch(same ? cur : null, key === "free" ? FREE_SPACE : (key ?? null), "atlas");
+  }
   // ★107 a heading's "⋯" menu: its folder (shown), the rename, and closing the space (asked first: room.js askCloseRoom). `g`: { head, terms }.
   spMenuView(g, sp = [], list = []) {
     const h = g?.head, id = h?.spaceId; if (!id || this.spMenu !== id) return null;
     const stop = (_e, cx) => cx.stop_propagation(), s = (sp ?? []).find((x) => x.id === id), folder = normFolder(s?.folder);
-    const item = (key, label, fn, o = {}) => h_flex().id(`pn-spm-${id}-${key}`).min_h(ROW_H).px(10).gap(8).items_center().rounded(6).text_size(TXT.small).text_color(o.red ? "#d6455d" : o.sub ? P.muted : P.ink)
-      .when(!o.sub, (e) => e.cursor_pointer().hover((s2) => s2.bg("#2b3b50")).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); this.spMenu = null; fn(cx); }))
+    const item = (key, label, fn, o = {}) => h_flex().id(`pn-spm-${id}-${key}`).min_h(ROW_H).px(10).gap(8).items_center().rounded(RAD(6)).text_size(TXT.small).text_color(o.red ? "#d6455d" : o.sub ? P.muted : P.ink)
+      .when(!o.sub, (e) => e.cursor_pointer().hover((s2) => s2.bg(P.raised)).on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); this.spMenu = null; fn(cx); }))
       .when(!!o.ic, (e) => e.child(icon(o.ic, 16, o.red ? "#d6455d" : o.sub ? P.muted : P.blue))).child(div().min_w(0).truncate().child(label));
     const members = (g.terms ?? []).map((r) => (list ?? []).find((x) => x.address === r.address && x.source !== "tui") ?? rowAgent(r));
-    return v_flex().id(`pn-spmenu-${id}`).ml(18).p(4).gap(1).rounded(10).bg("#1b2637").border(1).border_color(P.line).shadow_md()
+    return v_flex().id(`pn-spmenu-${id}`).ml(18).p(4).gap(1).rounded(RAD(10)).bg(P.paper).border(1).border_color(P.line).shadow_md()
       .child(item("folder", folder ? `폴더: ${tailFolder(folder)}` : "폴더: (홈)", () => {}, { sub: true, ic: "folder" })) // 19th K3: the end of a long path, not its head
       .child(item("rename", "이름 변경", (cx) => { this.spRename = { id, state: renameState(h.label) }; cx.notify(); }, { ic: "pencil" }))
       .child(item("close", members.length ? "공간 닫기…" : "공간 닫기 (비어 있음)", () => this.askCloseRoom({ id, name: h.label }, members), { red: true, ic: "trash" }));
@@ -355,7 +362,7 @@ export class PanelPart {
       if (ic.glyph === "dot") return box.child(div().w(10).h(10).rounded(5).bg(ic.color ?? STATE.working.color));
       if (ic.glyph === "disc") return box.child(this.markDisc?.(ic.text, ic.color, 8) ?? div().size(16).rounded(8).bg(ic.color).flex().items_center().justify_center().text_size(11).font_weight(900).text_color("#ffffff").child(ic.text));
       if (ic.glyph === "ring") return box.child(div().w(15).h(15).rounded(15).border(2.5).border_color(ic.color ?? "#e0a90f"));
-      if (ic.glyph === "bubble") return box.child(div().w(18).h(13).rounded(7).bg("#1b2637").border(1).border_color("#c9c2b2").flex().items_center().justify_center().text_size(9).font_weight(800).text_color("#cad5e4").child("…"));
+      if (ic.glyph === "bubble") return box.child(div().w(18).h(13).rounded(RAD(7)).bg(P.paper).border(1).border_color("#c9c2b2").flex().items_center().justify_center().text_size(9).font_weight(800).text_color("#cad5e4").child("…"));
       return box.child(div().text_size(11).font_weight(700).text_color(P.muted).child(ic.text ?? "•"));
     }
 
@@ -364,7 +371,7 @@ export class PanelPart {
     if (this.panelOpen() && this.panelStale()) { this.panelReadAt = Date.now(); cx.spawn(async (cx2) => this.panelRead(cx2)); } // ★105 N6/N3: a list older than 7 s is read again (not only from the timer)
     if (!this.panelOpen()) { // folded: a thin strip: the arrow, "一覧" down it (13th D4: the word of what it opens), and a small legend icon
       return v_flex().id("term-panel").absolute().left(0).top(8).w(PANEL_STRIP_W).h(Math.min(190, left.height - 70)).items_center().justify_center().gap(2)
-        .rounded_r(8).bg("#1b2637ee").border(1).border_color("#3b4b60").cursor_pointer().hover((s) => s.bg("#2b3b50"))
+        .rounded_r(8).bg((P.paper + "ee")).border(1).border_color(P.line).cursor_pointer().hover((s) => s.bg(P.raised))
         .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); this.panelSet(true, cx); })
         .child(div().text_size(16).font_weight(700).text_color(P.ink).child("▶")).children(["목", "록"].map((c) => div().text_size(TXT.small).font_weight(700).text_color(P.ink).child(c)))
         .child(div().h(4));
@@ -395,20 +402,23 @@ export class PanelPart {
       // ★101-3 the free heading ("スペースなし（フリー）") is a drop target too: a drop there moves the person / team to フリー
       const canFree = free && !!this.pdrag && moveToFreePlan(this.pdrag.agent, sp).ok;
       const can = free ? canFree : (!!id && !!targets?.has(id)), over = can && this.pdrag.over === okey, show = hover === h.key;
-      const plusOk = (!!id || free) && !h.tui, menuOn = !!id && this.spMenu === id;
-      return h_flex().id(`pn-${h.key}`).pl(6).pr(4).h(ROW_H).gap(5).items_center().rounded(6).when(over, (e) => e.bg("#314e70").border(1).border_color(P.blue)).when(can && !over, (e) => e.bg("#243d5d").border(1).border_color("#bcd3f5")).when(!over && !can && !this.pdrag && show, (e) => e.bg("#2b3b50"))
+      const plusOk = (!!id || free) && !h.tui, menuOn = !!id && this.spMenu === id, trashOk = !sel && (!!id || !!h.tuiSpaceId); // the space's delete, always shown (asked first)
+      const askDel = () => h.tui ? this.askTuiClose(`space:${h.tuiSpaceId}`, h.label, true)
+        : this.askCloseRoom({ id, name: h.label }, (g.terms ?? []).map((r) => (list ?? []).find((x) => x.address === r.address && x.source !== "tui") ?? rowAgent(r)));
+      return h_flex().id(`pn-${h.key}`).pl(6).pr(4).h(ROW_H).gap(5).items_center().rounded(RAD(6)).when(over, (e) => e.bg("#314e70").border(1).border_color(P.blue)).when(can && !over, (e) => e.bg(P.select).border(1).border_color("#bcd3f5")).when(!over && !can && !this.pdrag && show, (e) => e.bg(P.raised))
         .on_hover(hoverOn(h.key)).on_mouse_move((_e, cx2) => { if (this.pdrag && this.pdrag.over !== okey) { this.pdrag.over = okey; cx2.notify(); } })
         .on_mouse_up("left", (_e, cx2) => { if (this.pdrag && (id || free)) { cx2.stop_propagation(); this.panelDrop(id, cx2, free); } })
         // ★105 (codex_3) ▾ (folds the space) · folder · name · count in a round badge · a blue square "＋"
         .child(okey ? iconBtn(`sp-fold-${okey}`, spFolded(okey) ? "right" : "down", (cx2) => { const f = (this.spFolded ??= new Set()); if (f.has(okey)) f.delete(okey); else f.add(okey); cx2.notify(); }, { size: UI.hit, isize: 14 }) : div().flex_none().w(UI.hit).h(BTN))
         .child(icon("folder", 20, "#e0a90f"))
         .child(sel ? inlineRename(`sprn-${id}`, this.spRename.state, (cx2) => this.doSpaceRename(id, cx2), (cx2) => { this.spRename = null; cx2.notify(); }, TXT.body)
-          : h_flex().flex_1().min_w(0).gap(8).items_center().child(div().min_w(0).truncate().text_size(TXT.body).font_weight(700).text_color(P.ink).child(headText(W, h.label, count, { more: !sel && !!id && (show || menuOn || !!h.empty), plus: !sel && plusOk }))) // 25th L4: the end is tidy ("…" never after "_")
+          : h_flex().flex_1().min_w(0).gap(8).items_center().child(div().min_w(0).truncate().text_size(TXT.body).font_weight(700).text_color(P.ink).child(headText(W, h.label, count, { more: !sel && !!id && (show || menuOn || !!h.empty), plus: !sel && plusOk, trash: trashOk }))) // 25th L4: the end is tidy ("…" never after "_")
             .child(div().flex_none().min_w(24).h(22).px(7).flex().items_center().justify_center().rounded(11).bg("#334155").text_size(TXT.small).font_weight(700).text_color(P.ink).child(String(count))))
         // ★107 "⋯" (the menu: folder / 名前を変える / 閉じる): on hover, while open, and always on an empty space (so it can be closed)
         .when(!sel && !!id && (show || menuOn || !!h.empty), (e) => e.child(iconBtn(`sp-more-${id}`, "more", (cx2) => { this.spMenu = menuOn ? null : id; cx2.notify(); }, { size: BTN, isize: ICO, color: P.ink, frame: true, active: menuOn, tip: "메뉴" })))
+        .when(trashOk, (e) => e.child(iconBtn(`sp-trash-${okey ?? h.key}`, "trash", () => { this.spMenu = null; askDel(); }, { size: BTN, isize: ICO, red: true, tip: "공간 삭제: 안의 터미널도 종료됩니다 (확인 후 진행)" })))
         // ★103-2 "＋" on every heading (always shown). ★107: it opens the launch window with THIS room chosen. ★105: a filled blue square like codex_3
-        .when(!sel && plusOk, (e) => e.child(div().id(`sp-plus-${okey}`).flex_none().w(BTN).h(BTN).flex().items_center().justify_center().rounded(8).bg("#243d5d").cursor_pointer().hover((s) => s.bg("#314e70"))
+        .when(!sel && plusOk, (e) => e.child(div().id(`sp-plus-${okey}`).flex_none().w(BTN).h(BTN).flex().items_center().justify_center().rounded(RAD(8)).bg(P.select).cursor_pointer().hover((s) => s.bg("#314e70"))
           .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.newAgentFor(okey, null); cx2.notify(); }).child(icon("plus", 18, P.blue))));
     };
     const spFolded = (k) => !!k && !!this.spFolded?.has(k) && !q;
@@ -419,10 +429,10 @@ export class PanelPart {
       const click = ag ? (_e, cx2) => { cx2.stop_propagation(); this.rowMore = null; if (on) { this.closePanel(cx2); return; } this.termPick = null; this.select(ag, cx2); }
         : (_e, cx2) => { cx2.stop_propagation(); this.termPick = on ? null : { address: r.address, name: r.label }; if (!on) { this.open = false; } cx2.notify(); };
       const nest = r.nest ?? 0, grip = isDraggable(r), tg = rowTags(W, r, { ag: !!ag, acts, ren: !!ren, show, more: on });
-      const fold = r.kids > 0 ? div().id(`pn-fold-${r.address}`).flex_none().w(UI.hit).h(BTN).flex().items_center().justify_center().rounded(4).cursor_pointer().hover((s) => s.bg("#3b4b60"))
+      const fold = r.kids > 0 ? div().id(`pn-fold-${r.address}`).flex_none().w(UI.hit).h(BTN).flex().items_center().justify_center().rounded(4).cursor_pointer().hover((s) => s.bg(P.line))
         .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); const f = (this.panelFolded ??= new Set()); if (f.has(r.address)) f.delete(r.address); else f.add(r.address); cx2.notify(); })
         .child(icon(r.folded ? "right" : "down", 14, P.muted)) : null;
-      const row = h_flex().id(`pn-${r.key}`).pl(10).pr(4).h(ROW_H).gap(5).items_center().rounded(6).cursor_pointer().when(on || dragging, (e) => e.bg("#243d5d")).when(dragging, (e) => e.shadow_md()).hover((s) => s.bg(on ? "#243d5d" : "#2b3b50"))
+      const row = h_flex().id(`pn-${r.key}`).pl(10).pr(4).h(ROW_H).gap(5).items_center().rounded(RAD(6)).cursor_pointer().when(on || dragging, (e) => e.bg(P.select)).when(dragging, (e) => e.shadow_md()).hover((s) => s.bg(on ? P.select : P.raised))
         .on_hover(hoverOn(r.key)).on_click(click)
         // ★95-9 a worker is indented under its leader with a joining line; ★95-8 only a row that can be moved has a handle (the others keep the width, no handle)
         .when(nest > 0, (e) => e.child(div().flex_none().w(14 * (nest - 1))).child(h_flex().flex_none().w(14).h(ROW_H).items_center().child(div().ml(6).w(1).h(ROW_H).bg("#526277")).child(div().w(7).h(1).bg("#526277"))))
@@ -441,16 +451,16 @@ export class PanelPart {
               : div().id(`pn-name-${r.key}`).flex_1().min_w(0).truncate().text_size(TXT.body).text_color(P.ink)
                 .when(nameCut(r, tg), (e) => e.tooltip(String(r.label))) // ★14a C1: a name cut by "…" shows in full as the pointer's tooltip (the same `.tooltip` as iconBtn's tip)
                 .child(ln.text); })()) // ★107 W1: min_w 0 (rowTags leaves the name its room); the right-hand actions never get pushed out
-        .when(!ren && tg.workers, (e) => e.child(div().flex_none().px(6).py(1).rounded(8).bg("#493a24").text_size(TXT.small).text_color("#f4ce76").child(`작업자 ${r.kids}`)))
+        .when(!ren && tg.workers, (e) => e.child(div().flex_none().px(6).py(1).rounded(RAD(8)).bg("#493a24").text_size(TXT.small).text_color("#f4ce76").child(`작업자 ${r.kids}`)))
         // ★97 the leader split from its workers: a "まとめる" button (★101-5: no red 別室 tag any more — the teams come together by themselves). ★104 U7: 32px high
-        .when(!ren && tg.merge, (e) => e.child(div().id(`pn-merge-${r.address}`).flex_none().h(UI.hit).px(8).flex().items_center().rounded(8).bg("#493a24").text_size(TXT.small).font_weight(700).text_color("#f4ce76")
+        .when(!ren && tg.merge, (e) => e.child(div().id(`pn-merge-${r.address}`).flex_none().h(UI.hit).px(8).flex().items_center().rounded(RAD(8)).bg("#493a24").text_size(TXT.small).font_weight(700).text_color("#f4ce76")
           .cursor_pointer().on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.doMove(a, teamFixPlan(a, list ?? [], sp), cx2); }).child("모으기")))
         // ★104 U5 the model tag only where there is room (not on a chosen / hovered row)
         // ★106 V4/V6: the tag is a short name that is never cut ("Sonnet 5.5"); a row with "まとめる" or a name too long for the tag has none
-        .when(!ren && tg.model, (e) => e.child(div().flex_none().px(6).py(1).rounded(8).bg("#273548").text_size(TXT.small).text_color(P.muted).child(shortModel(r.model))))
+        .when(!ren && tg.model, (e) => e.child(div().flex_none().px(6).py(1).rounded(RAD(8)).bg("#273548").text_size(TXT.small).text_color(P.muted).child(shortModel(r.model))))
         // ★101-4 the pencil (rename) and the trash (end this session, asked first). ★104 U6: they show on hover or after the always-there pale "⋯"
         .when(!ren && acts && !r.tui && !!ag, (e) => e.child(iconBtn(`pn-pen-${r.address}`, "pencil", (cx2) => { this.renaming = { id: r.id, state: renameState(r.label) }; this.rowMore = null; cx2.notify(); }, { size: BTN, isize: ICO })))
-        .when(!ren && acts && !r.tui, (e) => e.child(iconBtn(`pn-trash-${r.address}`, "trash", (cx2) => { this.rowMore = null; this.askEnd(a, list ?? []); }, { size: BTN, isize: ICO, red: true })))
+        .when(!ren && acts, (e) => e.child(iconBtn(`pn-trash-${r.address}`, "trash", (cx2) => { this.rowMore = null; if (r.tui) this.askTuiClose(r.id, r.label, false); else if (r.shell && !ag) this.askShellEnd({ address: r.address, name: r.label }); else this.askEnd(a, list ?? []); }, { size: BTN, isize: ICO, red: true }))) // a shell: kill + remove (a finished one stays otherwise); a TUI pane: herdr pane close
         .when(!ren && !acts && on && !r.tui, (e) => e.child(iconBtn(`pn-more-${r.address}`, "more", (cx2) => { this.rowMore = r.key; cx2.notify(); }, { size: BTN, isize: ICO, color: P.ink, frame: true, tip: "메뉴" }))); // 5th X7: darker + framed, so it reads as a button
       return row;
     };
@@ -458,7 +468,7 @@ export class PanelPart {
     const emptyHint = (g) => (g.head?.spaceId && !g.head.tui && !g.head.free && !g.terms.some((t) => !t.shell) && !(this.spRename?.id === g.head.spaceId))
       ? [div().id(`pn-hint-${g.head.spaceId}`).pl(UI.hit + 31).h(22).flex().items_center().text_size(TXT.small).text_color(P.muted).child("＋로 에이전트 추가")] : [];
     const rowsEl = shown.flatMap((g) => [...(g.head ? [spaceRow(g)] : []), ...(g.head ? emptyHint(g) : []),...(g.head && this.spMenu ? [this.spMenuView(g, sp, list)].filter(Boolean) : []), ...(g.head && spFolded(g.head.spaceId ?? (g.head.free ? "free" : null)) ? [] : g.terms.map(termRow))]);
-    return v_flex().id("term-panel").absolute().left(0).top(8).w(W).h(Math.max(160, left.height - 16)).p(6).gap(4).rounded_r(10).bg("#1b2637f2").border(1).border_color("#3b4b60")
+    return v_flex().id("term-panel").absolute().left(0).top(8).w(W).h(Math.max(160, left.height - 16)).p(6).gap(4).rounded_r(10).bg((P.paper + "f2")).border(1).border_color(P.line)
       .on_mouse_down("left", (_e, cx2) => { cx2.stop_propagation(); if (this.spMenu) { this.spMenu = null; cx2.notify(); } }) // ★9b Z2: a press on the list's empty part closes the "⋯" menu (the menu's own items and the "⋯" buttons stop the press themselves)
       .on_mouse_down_out((_e, cx2) => { if (this.spMenu) { this.spMenu = null; cx2.notify(); } }) // ★9b Z2: a press outside the list (the floor, the right window) closes it too
       .on_scroll_wheel((_e, cx2) => cx2.stop_propagation())
@@ -474,30 +484,34 @@ export class PanelPart {
       // ★103 polish: a short hint under the heading (small, pale). Not about parent/child moves.
       .child(div().id("pn-hint").flex_none().px(8).min_w(0).truncate().text_size(TXT.small).text_color("#c2cede").child(PANEL_HINT)) // ★107 W8: one step darker than P.muted (was too pale to read); ★104 U8 14px
       // ★103-2 the "＋ エージェント" / "＋ ターミナル" buttons are gone from here: every space heading has its own "＋" (kind -> model)
-      .when(!!this.psearch, (e) => e.child(h_flex().flex_none().h(34).px(8).gap(6).items_center().rounded(8).border(1).border_color(P.line).bg("#1b2637").child(icon("search", 16, P.muted)).child(div().flex_1().min_w(0).child(Input.new(this.psearch)))))
-      .when(!!this.panelMsg, (e) => e.child(div().flex_none().px(8).py(4).rounded(6).bg("#472c36").text_size(TXT.small).text_color("#d6455d").child(String(this.panelMsg))))
+      .when(!!this.psearch, (e) => e.child(h_flex().flex_none().h(34).px(8).gap(6).items_center().rounded(RAD(8)).border(1).border_color(P.line).bg(P.paper).child(icon("search", 16, P.muted)).child(div().flex_1().min_w(0).child(Input.new(this.psearch)))))
+      .when(!!this.panelMsg, (e) => e.child(div().flex_none().px(8).py(4).rounded(RAD(6)).bg("#472c36").text_size(TXT.small).text_color("#d6455d").child(String(this.panelMsg))))
       // ★104 U10 "○○ を移しました — 元に戻す" (8 s)
-      .when(!!this.panelUndo, (e) => e.child(h_flex().id("pn-undo").flex_none().h(UI.hit).px(8).gap(8).items_center().rounded(6).bg("#243d5d")
+      .when(!!this.panelUndo, (e) => e.child(h_flex().id("pn-undo").flex_none().h(UI.hit).px(8).gap(8).items_center().rounded(RAD(6)).bg(P.select)
         .child(div().flex_1().min_w(0).truncate().text_size(TXT.small).text_color(P.ink).child(String(this.panelUndo.text)))
-        .child(div().id("pn-undo-btn").flex_none().h(UI.hit).px(8).flex().items_center().rounded(6).text_size(TXT.small).font_weight(700).text_color(P.blue).cursor_pointer().hover((s) => s.bg("#314e70"))
+        .child(div().id("pn-undo-btn").flex_none().h(UI.hit).px(8).flex().items_center().rounded(RAD(6)).text_size(TXT.small).font_weight(700).text_color(P.blue).cursor_pointer().hover((s) => s.bg("#314e70"))
           .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.panelUndoRun(cx2); }).child("되돌리기"))))
-      .when(!!this.opError?.text && !this.panelMsg, (e) => e.child(div().flex_none().px(8).py(4).rounded(6).bg("#472c36").text_size(TXT.small).text_color("#d6455d").child(ellipsize(String(this.opError.text), 80))))
+      .when(!!this.opError?.text && !this.panelMsg, (e) => e.child(div().flex_none().px(8).py(4).rounded(RAD(6)).bg("#472c36").text_size(TXT.small).text_color("#d6455d").child(ellipsize(String(this.opError.text), 80))))
       // ★104 U9 nothing is blank: "読み込み中…" until hc's list came (or "読み込めません"), "該当なし" for a search with no hit
       .child(div().id("term-panel-body").flex_1().min_h(0).overflow_y_scrollbar().child(v_flex().gap(1).children(rowsEl.length ? rowsEl
         : [div().id("pn-empty").px(8).py(8).text_size(TXT.small).text_color(P.muted).child(q ? "검색 결과 없음" : this.panelHc ? "표시할 터미널이 없습니다" : this.panelHcErr ? "불러오지 못했습니다" : "불러오는 중…")])))
       // ★106 (★105 追加) "新しいエージェント" at the bottom: ★107 opens the launch window (the chosen person's room, else the first room)
-      .child(div().id("pn-new-agent").flex_none().h(UI.hit + 4).mt(2).px(10).gap(8).flex().items_center().justify_center().rounded(8).bg("#243d5d").cursor_pointer().hover((s) => s.bg("#314e70"))
+      .child(div().id("pn-new-agent").flex_none().h(UI.hit + 4).mt(2).px(10).gap(8).flex().items_center().justify_center().rounded(RAD(8)).bg(P.select).cursor_pointer().hover((s) => s.bg("#314e70"))
         .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.newAgentOpen(shown, sp, list); cx2.notify(); })
         .child(icon("plus", 18, P.blue)).child(div().text_size(TXT.body).font_weight(700).text_color(P.blue).child("새 에이전트")))
+      // Atlas Code (atlas-tui project)
+      .child(div().id("pn-new-atlas").flex_none().h(UI.hit).mt(2).px(10).gap(8).flex().items_center().justify_center().rounded(RAD(8)).border(1).border_color("#2b5fd9").bg(P.paper).cursor_pointer().hover((s) => s.bg("#22334d"))
+        .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.newAtlasOpen(shown, sp, list); cx2.notify(); })
+        .child(icon("p-atlas", 16, "#5b8cff")).child(div().text_size(TXT.small).font_weight(700).text_color(P.ink).child("Atlas Code")))
       // ★107 (判断4) "スペースを作る": the make-a-space window (name + folder). The left list shows an empty space too; the floor draws only rooms with a person.
-      .child(div().id("pn-new-space").flex_none().h(UI.hit).px(10).gap(8).flex().items_center().justify_center().rounded(8).border(1).border_color(P.line).bg("#1b2637").cursor_pointer().hover((s) => s.bg("#2b3b50"))
+      .child(div().id("pn-new-space").flex_none().h(UI.hit).px(10).gap(8).flex().items_center().justify_center().rounded(RAD(8)).border(1).border_color(P.line).bg(P.paper).cursor_pointer().hover((s) => s.bg(P.raised))
         .on_mouse_down("left", stop).on_click((_e, cx2) => { cx2.stop_propagation(); this.newSpaceStart(cx2); })
         .child(icon("room-add", 16, P.ink)).child(div().text_size(TXT.small).font_weight(700).text_color(P.ink).child("공간 만들기")))
       // ★95-8 the picked row follows the pointer (a small chip beside it, so it never sits under the pointer)
-      .when(!!this.pdrag?.label, (e) => e.child(div().absolute().left((this.pdrag.x ?? 0) + 12).top((this.pdrag.y ?? 0) - 8 + 8).px(8).py(3).rounded(6).bg("#1b2637").border(1).border_color(P.blue).shadow_md().text_size(TXT.small).text_color(P.ink).child(ellipsize(String(this.pdrag.label), 16))))
+      .when(!!this.pdrag?.label, (e) => e.child(div().absolute().left((this.pdrag.x ?? 0) + 12).top((this.pdrag.y ?? 0) - 8 + 8).px(8).py(3).rounded(RAD(6)).bg(P.paper).border(1).border_color(P.blue).shadow_md().text_size(TXT.small).text_color(P.ink).child(ellipsize(String(this.pdrag.label), 16))))
       .child(splitHandle("left-split", (e, cx2) => { this.resizeStart("left", e.position.x); cx2.notify(); }, this.resize?.side === "left").right(-3))
       // ★105 (codex_3) the border can be seen to be grabbed: a small pill with three dots at its middle (same press as the handle behind it)
-      .child(v_flex().id("left-split-grip").absolute().right(-6).top(Math.max(40, Math.round(left.height / 2) - 22)).w(12).h(44).items_center().justify_center().gap(4).rounded(6).bg("#1b2637").border(1).border_color("#526277").cursor_col_resize()
+      .child(v_flex().id("left-split-grip").absolute().right(-6).top(Math.max(40, Math.round(left.height / 2) - 22)).w(12).h(44).items_center().justify_center().gap(4).rounded(RAD(6)).bg(P.paper).border(1).border_color("#526277").cursor_col_resize()
         .on_mouse_down("left", (e, cx2) => { cx2.stop_propagation(); this.resizeStart("left", e.position.x); cx2.notify(); })
         .children([0, 1, 2].map((i) => div().w(3).h(3).rounded(2).bg(this.resize?.side === "left" ? P.blue : "#9a9588"))));
   }

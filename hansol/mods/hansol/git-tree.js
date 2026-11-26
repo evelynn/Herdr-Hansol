@@ -3,7 +3,7 @@
 // Read only: nothing here changes a repository. Drawing after herdr-git-graph (MIT, see git-rules.js). Mixed into AgentHud.
 import { div, PathBuilder } from "gpui-kit";
 import { h_flex, v_flex, v_virtual_list, Scrollbar, VirtualListScrollHandle } from "gpui-base";
-import { closeOverlay, exec, openOverlay, panes, props, settings, setShared, shared, spaces } from "herdr";
+import { closeOverlay, exec, notify, openOverlay, panes, props, settings, setShared, shared, spaces } from "herdr";
 import { P } from "./common.js";
 import { icon } from "./icons.js";
 import { iconBtn } from "./ui.js";
@@ -11,20 +11,20 @@ import { spaceForIsland } from "./actions.js";
 import { LOG_N, fetchArgs, netReason, parseRemotes, remotesArgs, pullArgs, upstreamArgs, syncArgs, parseSync, ago, currentBranch, diffArgs, diffRows, fileArgs, folderKey, joinFiles, laneColor, layoutLanes, logArgs, parseLog, parseShow, rootArgs, showArgs, spaceFolder, stamp } from "./git-rules.js";
 
 const ROW = 26, LANE = 14, PAD = 8, DIFF_ROW = 20, REFRESH_MS = 15000;
-const C = { bg: "#151e2e", head: "#1b2637", line: "#2c3a4f", hover: "#22324a", sel: "#243d5d", dim: "#7f8ea3", add: "#7bd88f", del: "#ff8a8a", tag: "#f4ce76", remote: "#7bd88f" };
+export const C = { bg: "#151e2e", get head() { return P.paper; }, line: "#2c3a4f", hover: "#22324a", get sel() { return P.select; }, dim: "#7f8ea3", add: "#7bd88f", del: "#ff8a8a", tag: "#f4ce76", remote: "#7bd88f" };
 // One window, two sizes: the graph alone (narrow and tall), and the graph with the pressed commit on its right (the list keeps its
 // width, the commit gets the rest). The App cannot resize a window, so a change of size opens the same window again in its place;
 // the history it had is kept in shared LOG_KEEP and drawn at once. A size dragged or docked is kept per size (shared SAVE; one
 // height for both) and used the next time.
 const WIN_KEY = "hansol-git-graph", SIZES = { graph: { w: 640, h: 820 }, detail: { w: 1500, h: 820 } }, WIN_MIN = { w: 480, h: 360 }, DETAIL_MIN = 480;
 const SAVE = "hansol.gitWinV3", LOG_KEEP = "hansol.gitLog";
-const modeOf = (base) => (base?.hash ? "detail" : "graph");
+const modeOf = (base) => (base?.hash || base?.pane ? "detail" : "graph");
 function gitWinSize(base, size = null) {
   const vp = globalThis.window?.viewport_size?.(), all = shared(SAVE) ?? {}, mode = modeOf(base), d = SIZES[mode];
   const maxW = vp?.width > 0 ? vp.width - 16 : 1900, maxH = vp?.height > 0 ? vp.height - 16 : 1100;
   return { w: Math.round(Math.max(WIN_MIN.w, Math.min(maxW, size?.width ?? all[mode]?.w ?? d.w))), h: Math.round(Math.max(WIN_MIN.h, Math.min(maxH, size?.height ?? all.h ?? d.h))) };
 }
-function gitOpenWin(role, base, size = null, at = null) {
+export function gitOpenWin(role, base, size = null, at = null) {
   if (role !== "git-graph") return;
   const { w, h } = gitWinSize(base, size), all = shared(SAVE) ?? {};
   openOverlay({ mod: "hansol", kind: "window", key: WIN_KEY, width: w, height: h, ...(at ? { at } : {}), props: { ...base, role, width: w, height: h } });
@@ -32,9 +32,9 @@ function gitOpenWin(role, base, size = null, at = null) {
 }
 // The list's width: the graph-alone width, as long as the commit keeps DETAIL_MIN.
 const listWidth = (winW) => Math.max(340, Math.min(winW - DETAIL_MIN, (shared(SAVE) ?? {}).graph?.w ?? SIZES.graph.w));
-const mono = () => { try { return settings()?.font_family || "JetBrains Mono"; } catch { return "JetBrains Mono"; } };
-const git = (root, on, args) => exec("git", args, { cwd: root, on: on ?? null, timeout: 20000 });
-const errText = (r) => String(r?.stderr || r?.stdout || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("hint:")).slice(-3).join("\n") || `git 종료 코드 ${r?.code}`;
+export const mono = () => { try { return settings()?.font_family || "JetBrains Mono"; } catch { return "JetBrains Mono"; } };
+export const git = (root, on, args) => exec("git", args, { cwd: root, on: on ?? null, timeout: 20000 });
+export const errText = (r) => String(r?.stderr || r?.stdout || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("hint:")).slice(-3).join("\n") || `git 종료 코드 ${r?.code}`;
 
 export class GitPart {
   // ---- opening (the office's flag)
@@ -62,7 +62,16 @@ export class GitPart {
     if (!sp && !path) return;
     const root = await this.gitRootOf(sp ? spaceFolder(sp, pl) : path, sp?.machine ?? null); if (!root) return;
     const at = { root, on: sp?.machine ?? null, space: sp?.name ?? "" };
+    if (["changes", "remote", "tools"].includes(hash)) return gitOpenWin("git-graph", { ...at, pane: hash }); // <space>@changes|remote|tools: that side
     this.openGitGraph({ ...at, hash: hash || null, file: file || null });
+  }
+  // A MOSSES system (its agents): its space's repository; not a repository -> a toast (2026-11-27).
+  gitOpenFor(members, title, cx) {
+    let sl = [], pl = []; try { sl = spaces(); pl = panes(); } catch {}
+    const sp = spaceForIsland(members, sl, { source: "app", title }), folder = spaceFolder(sp, pl);
+    const no = (why) => { try { notify({ title: "Git 창", body: `${title}: ${why}` }); } catch {} };
+    if (!sp || !folder) return no("작업 공간 폴더를 찾지 못함");
+    cx.spawn(async () => { const root = await this.gitRootOf(folder, sp.machine); if (root) this.openGitGraph({ root, on: sp.machine ?? null, space: sp.name }); else no(`Git 저장소가 아님 (${folder})`); });
   }
   openGitGraph({ root, on, space, hash = null, file = null }) { gitOpenWin("git-graph", { root, on, space, hash, file }); }
 
@@ -80,11 +89,11 @@ export class GitPart {
         .child(`${Math.round(cur.width)} × ${Math.round(cur.height)}`));
   }
   // What this window opens again with (the commit on the right and the file whose diff is shown stay; `again`: no second automatic fetch).
-  gitBase() { const p = props() ?? {}, d = this.gw?.detail; return { root: p.root, on: p.on ?? null, space: p.space ?? "", hash: d?.hash ?? p.hash ?? null, file: d?.file ?? null, again: true }; }
+  gitBase() { const p = props() ?? {}, d = this.gw?.detail; return { root: p.root, on: p.on ?? null, space: p.space ?? "", hash: d?.hash ?? p.hash ?? null, file: d?.file ?? null, pane: this.gw?.pane ? (this.gw.pane === "commit" ? null : this.gw.pane) : p.pane ?? null, again: true }; }
   // The commit on the right opens (hash) or closes (null): the window opens again at the other size. A wider window that would
   // run past the screen's right edge moves left (its place is known from the last press in it, gwAt).
   gitShowDetail(hash) {
-    const base = { ...this.gitBase(), hash: hash ?? null, file: null }, vp = globalThis.window?.viewport_size?.(), pos = this.gwAt;
+    const base = { ...this.gitBase(), hash: hash ?? null, file: null, pane: null }, vp = globalThis.window?.viewport_size?.(), pos = this.gwAt;
     let at = null;
     if (hash && pos && vp?.width > 0) { const { w } = gitWinSize(base); if (pos.x + w > vp.width - 8) at = { x: Math.max(8, vp.width - 8 - w), y: Math.max(0, pos.y) }; }
     gitOpenWin("git-graph", base, null, at);
@@ -97,7 +106,7 @@ export class GitPart {
   }
   gitWinButtons() {
     const b = (id, label, tip, fn) => div().id(id).flex_none().w(34).h(32).flex().items_center().justify_center().rounded(6).text_size(16).text_color(P.ink).cursor_pointer().tooltip(tip)
-      .hover((s) => s.bg("#314259")).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(); }).child(label);
+      .hover((s) => s.bg(P.press)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(); }).child(label);
     return [b("git-dock-left", "◧", "왼쪽 절반에 붙이기", () => this.gitDock("left")), b("git-dock-right", "◨", "오른쪽 절반에 붙이기", () => this.gitDock("right")),
       b("git-dock-full", "▣", "화면 전체로 넓히기", () => this.gitDock("full"))];
   }
@@ -125,7 +134,8 @@ export class GitPart {
       await this.gitSync(cx2);
       if (!p.again) await this.gitNetRun("fetch", cx2, true);
     });
-    cx.timer.every(REFRESH_MS, (cx2) => cx2.spawn(async (cx3) => { await this.gitLoadLog(cx3); await this.gitSync(cx3); }));
+    cx.timer.every(REFRESH_MS, (cx2) => cx2.spawn(async (cx3) => { await this.gitLoadLog(cx3); await this.gitSync(cx3); await this.gitLoadStatus?.(cx3); }));
+    this.gitWorkInit?.(cx); // 변경 · 원격 · 도구 (git-work.js)
   }
   gitCenter(hash) { const i = this.gw.index?.get(hash); if (i !== undefined) try { this.gw.scroll.scroll_to_item(i, "center"); } catch {} }
   gitTakeLog(out) {
@@ -217,8 +227,8 @@ export class GitPart {
       .child(iconBtn("git-close", "x", () => closeOverlay(props()?.overlay), { size: 32, isize: 16, tip: "닫기" }));
   }
   gitTextBtn(id, label, tip, fn, warn = false) {
-    return div().id(id).flex_none().h(30).px(10).flex().items_center().rounded(6).border(1).border_color(warn ? C.tag : C.line).bg(warn ? "#493a24" : "#202c3e")
-      .text_size(12).font_weight(700).text_color(warn ? C.tag : P.ink).cursor_pointer().tooltip(tip).hover((s) => s.bg("#314259"))
+    return div().id(id).flex_none().h(30).px(10).flex().items_center().rounded(6).border(1).border_color(warn ? C.tag : C.line).bg(warn ? "#493a24" : P.white)
+      .text_size(12).font_weight(700).text_color(warn ? C.tag : P.ink).cursor_pointer().tooltip(tip).hover((s) => s.bg(P.press))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(label);
   }
   gitRefChip(ref, color, id) {
@@ -254,7 +264,7 @@ export class GitPart {
       .child(this.gitGraphCell(row, c, width))
       .child(h_flex().flex_1().min_w(0).h_full().gap(6).items_center().overflow_hidden()
         .children(c.refs.slice(0, 4).map((r, k) => this.gitRefChip(r, color, `gc-${c.hash}-r${k}`)))
-        .when(merge, (e) => e.child(div().flex_none().px(5).rounded(4).bg("#2b3b50").text_size(11).font_weight(700).text_color(P.muted).child("병합")))
+        .when(merge, (e) => e.child(div().flex_none().px(5).rounded(4).bg(P.raised).text_size(11).font_weight(700).text_color(P.muted).child("병합")))
         .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(merge ? P.muted : P.ink).when(c.head, (e) => e.font_weight(700)).child(c.subject)))
       .child(div().w(72).flex_none().truncate().text_size(12).text_color(P.muted).child(c.author)) // (the hash and the full dates are on the right)
       .child(div().w(64).flex_none().text_right().truncate().text_size(12).text_color(C.dim).child(ago(c.time)));
@@ -266,6 +276,9 @@ export class GitPart {
       div().flex_none().text_size(12).text_color(C.dim).child(g.state === "ready" ? `커밋 ${g.commits.length}개${g.commits.length >= LOG_N ? " (최근)" : ""}` : ""),
       ...(g.sync ? [div().id("git-sync").flex_none().text_size(12).font_weight(700).text_color(g.sync.behind ? C.tag : C.dim).tooltip(`${g.upstream} 기준: 앞섬 ${g.sync.ahead}개 · 뒤처짐 ${g.sync.behind}개`).child(`↑${g.sync.ahead} ↓${g.sync.behind}`)] : []),
     ], actions = [
+      this.gitTextBtn("git-open-changes", g.work?.items?.length ? `변경 ${g.work.items.length}` : "변경", "작업 파일 변경 · 스테이지 · 커밋 · 푸시 · 브랜치 전환", (cx) => this.gitPane("changes", cx), !!g.work?.items?.length),
+      this.gitTextBtn("git-open-remote", "원격", "GitHub PR·CI / GitLab MR·이슈·파이프라인", (cx) => this.gitPane("remote", cx)),
+      this.gitTextBtn("git-open-tools", "도구", "탐색기·VS Code·새 터미널·npm 명령·.env 점검·열린 포트", (cx) => this.gitPane("tools", cx)),
       this.gitTextBtn("git-fetch", g.net === "fetch" ? `가져오는 중… ${g.netDone ?? 0}/${g.netTotal ?? 0}` : "가져오기", "원격마다 새 커밋 가져오기 (git fetch <원격>, 작업 파일은 그대로)", (cx) => cx.spawn(async (cx2) => this.gitNetRun("fetch", cx2))),
       ...(g.upstream ? [this.gitTextBtn("git-pull", g.net === "pull" ? "당겨오는 중…" : Date.now() - (g.pullAsk ?? 0) < 5000 ? "다시 눌러 실행" : "당겨오기",
         `${g.upstream}의 새 커밋을 현재 브랜치에 반영 (git pull --ff-only: 병합 커밋을 만들지 않고, 충돌이 나면 실행하지 않음)`, (cx) => {
@@ -274,7 +287,7 @@ export class GitPart {
           g.pullAsk = 0; cx.spawn(async (cx2) => this.gitNetRun("pull", cx2)); }, Date.now() - (g.pullAsk ?? 0) < 5000)] : []),
       iconBtn("git-refresh", "refresh", (cx) => { g.sig = null; cx.spawn(async (cx2) => { await this.gitLoadLog(cx2); await this.gitSync(cx2); }); }, { size: 32, isize: 16, tip: "다시 읽기" }),
     ];
-    const split = !!props()?.hash; // the window's size says it: the graph alone, or the graph with a commit on the right
+    const split = !!props()?.hash || !!props()?.pane; // the window's size says it: the graph alone, or the graph with a commit on the right
     // the window's place on screen, from any press in it (a wider window moves left if it would run past the screen)
     const root = v_flex().id("git-graph-root").size_full().bg(C.bg).on_mouse_down("left", (e) => { if (e.local_position) this.gwAt = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; })
       .child(this.gitWinHead(name, `${g.space ? `공간 ${g.space} · ` : ""}${g.root ?? ""}`))
@@ -292,6 +305,7 @@ export class GitPart {
         .on_item_click((key, cx) => { // a commit opens the right side; the same one again closes it; another one takes its place
           const c = g.commits[g.index?.get(key)]; if (!c) return;
           if (!split) return this.gitShowDetail(c.hash);
+          if (g.pane !== "commit") { g.pane = "commit"; cx.notify(); }
           if ((g.detail?.hash ?? props()?.hash) === c.hash) return this.gitShowDetail(null);
           cx.spawn(async (cx2) => this.gitSelect(c.hash, cx2)); })
         .track_scroll(g.scroll).size_full())
@@ -303,7 +317,7 @@ export class GitPart {
       .child(h_flex().flex_none().gap(5).items_center().child(div().size(10).rounded(5).bg(P.blue).border(2).border_color("#ffffff")).child(div().child("HEAD")))
       .child(h_flex().flex_none().gap(5).items_center().child(div().size(10).rounded(5).bg(C.bg).border(2).border_color(P.blue)).child(div().child("병합")))
       .child(this.gitGrip());
-    return root.child(h_flex().id("git-split").flex_1().min_h(0).child(left).when(split, (e) => e.child(this.gitDetailPane(g.detail)))).child(foot);
+    return root.child(h_flex().id("git-split").flex_1().min_h(0).child(left).when(split, (e) => e.child(this.gitRightPane()))).child(foot);
   }
 
   // ---- the right side: the commit pressed in the list (meta on top, its files, then the chosen file's diff)

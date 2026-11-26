@@ -4,13 +4,14 @@
 
 // Kinds and how they start. ★108: each CLI as it starts by itself (no permission widened); config.json office.launch.kinds.<kind>.argv
 // replaces the start words of a kind (e.g. ["codex", "-s", "workspace-write"]), set by applyLaunchKinds when the config is read.
-export const BASE_ARGV = { claude: ["claude"], codex: ["codex"], opencode: ["opencode"], cursor: ["cursor-agent"], agy: ["agy"] };
+export const BASE_ARGV = { claude: ["claude"], codex: ["codex"], opencode: ["opencode"], cursor: ["cursor-agent"], agy: ["agy"], atlas: ["atlas-tui", "--new"] };
 export const AGENT_KINDS = [
   { key: "claude", label: "Claude Code", argv: [...BASE_ARGV.claude] },
   { key: "codex", label: "Codex", argv: [...BASE_ARGV.codex] },
   { key: "opencode", label: "OpenCode", argv: [...BASE_ARGV.opencode] },
   { key: "cursor", label: "Cursor", argv: [...BASE_ARGV.cursor] },
   { key: "agy", label: "Antigravity", argv: [...BASE_ARGV.agy] },
+  { key: "atlas", label: "Atlas Code", argv: [...BASE_ARGV.atlas] },
 ];
 // ★108 office.launch.claude_settings: { persist, effort } (both true when left out). persist: every Claude started here gets a --settings file
 // that sets CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 (below); effort: a chosen effort is also put in that file's env (CLAUDE_CODE_EFFORT_LEVEL).
@@ -78,12 +79,12 @@ export const NEW_SPACE = "__new__";
 export const FREE_SPACE = "__free__";
 // ★95 request-free-space: "スペースなし（フリー）" is now a real space named FREE_NAME (a tab in it; made when missing, closed by ★85-1 when empty), so the
 // standard layout's Agents list shows it. The collector draws that space as the free desk island (island_of). Only a child (--parent) still goes by hc run.
-export const FREE_NAME = "フリー";
+export const FREE_NAME = "공간 없음";
 // ★68-2 "＋ ターミナル": a shell only (no agent). In a space: tab.new without argv; free: hc run with no program (the machine's own shell).
 export const SHELL_KIND = { key: "shell", label: "터미널 (shell)", argv: [] };
 // How each kind takes its first instruction on the command line when started by hc (no App to type it in). agy: none known, so it is
 // typed in with `hc send` after the start (it waits until the program pauses).
-const TASK_ARGS = { claude: (t) => [t], codex: (t) => [t], cursor: (t) => [t], opencode: (t) => ["--prompt", t] };
+const TASK_ARGS = { claude: (t) => [t], codex: (t) => [t], cursor: (t) => [t], opencode: (t) => ["--prompt", t], atlas: (t) => [t] };
 export const HC_NAME = /^[a-z0-9_-]{1,32}$/;
 
 // The form's default space: the chosen person's space (one space per project), else the first one there is, else a new one.
@@ -169,6 +170,20 @@ export async function endAgent(run, a, answer) {
   return { ok: true, called: true, calls };
 }
 
+// A shell picked from the left list: end its program (hc kill answers once it has finished), then remove the finished terminal so
+// its row goes away. A shell that already finished stays in the list and cannot be ended again; kill then fails and rm still removes it.
+export async function endShell(hc, address, answer) {
+  if (answer !== true) return { ok: true, called: false, calls: [] };
+  if (!address || !hc) return { ok: false, called: false, error: "종료할 터미널이 없습니다", calls: [] };
+  const calls = [["kill", address], ["rm", address]];
+  try {
+    await hc(calls[0]);
+    const r = await hc(calls[1]);
+    if (r?.code) return { ok: false, called: true, error: String(r.stderr || r.stdout || `hc rm: ${r.code}`).slice(0, 200), calls };
+  } catch (e) { return { ok: false, called: true, error: String(e), calls }; }
+  return { ok: true, called: true, calls };
+}
+
 // ---- ★30-7 the operations the detail column offers: only commands Herdr App really has.
 // `live` is false for the demo (nothing real is called). `tabId` is the App's tab id, when it could be found.
 export function agentOps(a, tabId = null, live = true) {
@@ -244,7 +259,7 @@ export function roomsToRelease(seen, spaceList = [], list = [], paneList = [], n
 // ★85-2 a room made from the launch dialog has no name typed: once its first agent has a title (the work summary), the room takes it.
 // `auto`: Map spaceId -> { at }. Returns [{ id, name }] to rename (and drops them from `auto`; old ones are dropped after 15 minutes).
 // ★85 e2e: some programs (OpenCode) never set a title that tells the work; theirs stays the program's own name. That says nothing: not a name, not a room name.
-export const isGenericTitle = (t, prog = "") => { const x = String(t ?? "").trim().toLowerCase().replace(/[\s_-]+/g, ""); return !x || /^\d+$/.test(x) || ["opencode", "claudecode", "claude", "codex", "cursor", "cursoragent", "agy", "antigravity", "shell", "bash", "zsh", "powershell", "pwsh"].includes(x) || x === String(prog ?? "").toLowerCase().replace(/[\s_-]+/g, ""); };
+export const isGenericTitle = (t, prog = "") => { const x = String(t ?? "").trim().toLowerCase().replace(/[\s_-]+/g, ""); return !x || /^\d+$/.test(x) || ["opencode", "claudecode", "claude", "codex", "cursor", "cursoragent", "agy", "antigravity", "atlas", "atlascode", "atlastui", "shell", "bash", "zsh", "powershell", "pwsh"].includes(x) || x === String(prog ?? "").toLowerCase().replace(/[\s_-]+/g, ""); };
 // ★85 (2) a room made by a COMMAND (herdr-app do space.new, hc run ...), not from the launch dialog, also takes the first agent's title as its name: but only a room that
 // APPEARS while we watch (never the rooms that were there when the office started) and only while its name is still the App's default (empty, a number,
 // "Space 3", "新しい部屋"...). A room the person named is never touched. `known`: Set of space ids seen so far (the first call only fills it); `auto`: as in roomRenames.
@@ -404,7 +419,7 @@ export function teamPlan(a, members, mk) {
 
 // ★97 a worker of the ★97 room rules is an AGENT terminal (one of the kinds that report a state: claude, codex, opencode, cursor, agy ...).
 // A helper an agent started for its work (t105 `node` edge-keepalive, a bare shell) is not part of the team and is neither counted nor moved.
-export const isAgentApp = (app) => /^(claude|codex|opencode|cursor|agy|antigravity|gemini)\b/i.test(String(app ?? "").trim());
+export const isAgentApp = (app) => /^(claude|codex|opencode|cursor|agy|antigravity|gemini|atlas)\b/i.test(String(app ?? "").trim());
 export const agentMembers = (a, list = []) => teamMembers(a, list).filter((m) => isAgentApp(m?.app));
 
 // ★95 "フリーへ" = to the real space "フリー" (moveToSpacePlan); when it is missing, make it first (`saveId`: runMovePlan keeps the new space's id for "$free").

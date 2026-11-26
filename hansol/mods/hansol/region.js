@@ -85,7 +85,7 @@ export class RegionPart {
       collapse: (on) => setShared("hansol.rcollapse", { on: !!on, at: Date.now() }) };
     if (!s) return v_flex().size_full().bg(P.paper).child(div().p(16).text_size(14).text_color(P.muted).child("불러오는 중…")); // ★104 U9: right after a person is chosen, until rsel is set
     if (s.collapsed) return this.collapsedStrip(a, { face: a ? this.faceFile(a) : null }, slide);
-    if (s.kind === "pick") return this.pickHeadView({ name: s.name });
+    if (s.kind === "pick") return this.pickHeadView({ name: s.name, address: s.address });
     if (s.kind === "inbox") return this.inboxView(); // ★106 ②
     if (!a) return v_flex().size_full().bg(P.paper).child(div().p(16).text_size(14).text_color(P.muted).child(this.items().length ? "에이전트를 찾을 수 없습니다" : "불러오는 중…"));
     const tab = tabFor(s.tab, true, this.familyRows(a, list).length - 1);

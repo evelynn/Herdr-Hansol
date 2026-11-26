@@ -4,7 +4,7 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { appHome, closeOverlay, exec, hc, notify, openOverlay, props, readTextFile, run, setShared, shared, spaces, writeTextFile } from "herdr";
-import { P } from "./common.js";
+import { RAD, P } from "./common.js";
 import { icon } from "./icons.js";
 import { AGENT_KINDS, FREE_NAME, FREE_SPACE, NEW_SPACE, cleanChoice, cleanDefaults, defaultSpace, effortsFor, launchAgent, normalizeOptions } from "./actions.js";
 
@@ -50,9 +50,15 @@ export class LaunchPart {
     // 19th K4: with nobody chosen and no room given, the room on show is the default (unknown -> the old first room)
     const mineId = selected?.space ? list.find((s) => s.name === selected.space)?.id : null;
     const space = spaceId === FREE_SPACE ? FREE_SPACE : spaceId && list.some((s) => s.id === spaceId) ? spaceId : mineId ?? (shown && list.some((s) => s.id === shown) ? shown : defaultSpace(list, selected)); // ★107 the left list's フリー heading passes FREE_SPACE
-    if (SHELL_ONLY) { // same call as the window's 起動 with the shell tile and the window's default folder
-      const fail = (e) => notify({ title: "터미널 추가 실패", body: String(e ?? "").slice(0, 200), level: "error" });
-      launchAgent(run, { space, kind: "shell", folder: selected?.cwd ?? "" }, list, hc, writeTextFile).then((r) => { if (!r?.ok) fail(r?.error); }, fail);
+    if (mode === "atlas") { // Atlas Code (atlas-tui project): started at once like the shell, without the launch window
+      const fail = (e) => notify({ title: "Atlas Code 시작 실패", body: String(e ?? "").slice(0, 200), level: "error" });
+      launchAgent(run, { space, kind: "atlas", folder: selected?.cwd ?? "" }, list, hc, writeTextFile).then((r) => { if (!r?.ok) fail(r?.error); }, fail);
+      return;
+    }
+    if (SHELL_ONLY) { // same call as the window's 起動 with the window's default folder: an agent "add" starts Claude Code (2026-11-27 user), "＋ terminal" a shell
+      const kind = mode === "terminal" ? "shell" : "claude";
+      const fail = (e) => notify({ title: kind === "shell" ? "터미널 추가 실패" : "에이전트 추가 실패", body: String(e ?? "").slice(0, 200), level: "error" });
+      launchAgent(run, { space, kind, folder: selected?.cwd ?? "" }, list, hc, writeTextFile).then((r) => { if (!r?.ok) fail(r?.error); }, fail);
       return;
     }
     const rows = shared("hansol.launch.rows") ?? { models: true, efforts: true, last: true }; // what the last window showed (the lists load after it opens)
@@ -81,8 +87,8 @@ export class LaunchPart {
 
   // ★61-1: always on the band (main.js band()).
   launchButton(compact = false) { // compact (a narrow band): the ＋ alone
-    return h_flex().id("launch-btn").flex_none().px(10).h(30).gap(5).items_center().rounded(10).border(1).border_color(P.blue)
-      .bg(P.white).cursor_pointer().hover((s) => s.bg("#243d5d"))
+    return h_flex().id("launch-btn").flex_none().px(10).h(30).gap(5).items_center().rounded(RAD(10)).border(1).border_color(P.blue)
+      .bg(P.white).cursor_pointer().hover((s) => s.bg(P.select))
       .on_click(() => { const sel = this.items().find((a) => a.id === shared("hansol.sel")); this.openLaunch(sel ?? null); })
       .child(icon("agent-add", 16, P.blue))
       .when(!compact, (el) => el.child(div().text_size(12).font_weight(700).text_color(P.blue).child("에이전트")));
@@ -90,8 +96,8 @@ export class LaunchPart {
 
   // ★68-2: "＋ ターミナル" beside "＋ エージェント" (a shell, in a space or free, as the TUI can).
   terminalButton(compact = false) {
-    return h_flex().id("terminal-btn").flex_none().px(10).h(30).gap(5).items_center().rounded(10).border(1).border_color(P.line)
-      .bg(P.white).cursor_pointer().hover((s) => s.bg("#253449"))
+    return h_flex().id("terminal-btn").flex_none().px(10).h(30).gap(5).items_center().rounded(RAD(10)).border(1).border_color(P.line)
+      .bg(P.white).cursor_pointer().hover((s) => s.bg(P.hover))
       .on_click(() => { const sel = this.items().find((a) => a.id === shared("hansol.sel")); this.openLaunch(sel ?? null, null, "terminal"); })
       .child(icon("terminal-add", 16, P.ink))
       .when(!compact, (el) => el.child(div().text_size(12).font_weight(700).text_color(P.ink).child("터미널")));
@@ -149,17 +155,17 @@ export class LaunchPart {
     const { term, free, shell, child, models, efforts, parents, mem, usedLast } = this.launchDerived(p, f); // ★68-2 / ★95
     const tog = (name) => (_e, cx) => { f.open = f.open === name ? null : name; cx.notify(); };
     const pick = (k) => { f.kind = k; f.open = null; const r = f.mem?.[k]; Object.assign(f, cleanChoice(f.options, k, r?.model ?? "", r?.effort ?? "")); }; // a kind change: that kind's own last choice, only what it still has
-    const chip = (id, text, on, fn) => div().id(id).flex_none().px(10).py(5).rounded(8).border(1).border_color(on ? P.blue : P.line).bg(on ? "#243d5d" : P.white)
-      .text_size(12).font_weight(on ? 700 : 400).text_color(on ? P.blue : P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click((_e, cx) => { fn(); cx.notify(); this.rememberRows(); }).child(text);
+    const chip = (id, text, on, fn) => div().id(id).flex_none().px(10).py(5).rounded(RAD(8)).border(1).border_color(on ? P.blue : P.line).bg(on ? P.select : P.white)
+      .text_size(12).font_weight(on ? 700 : 400).text_color(on ? P.blue : P.ink).cursor_pointer().hover((s) => s.bg(P.raised)).on_click((_e, cx) => { fn(); cx.notify(); this.rememberRows(); }).child(text);
     // a dropdown: the trigger shows the chosen value; the list unfolds under it (in the flow, so it scrolls with the middle). `items`: [{ id, text, on, fn }]
     const dropdown = (key, current, items) => v_flex().gap(4)
-      .child(h_flex().id(`dd-${key}`).h(34).px(10).items_center().justify_between().rounded(8).border(1).border_color(f.open === key ? P.blue : P.line).bg(P.white).cursor_pointer()
+      .child(h_flex().id(`dd-${key}`).h(34).px(10).items_center().justify_between().rounded(RAD(8)).border(1).border_color(f.open === key ? P.blue : P.line).bg(P.white).cursor_pointer()
         .hover((s) => s.bg("#f8f5ee")).on_click(tog(key)).child(div().text_size(12).text_color(P.ink).child(current)).child(div().text_size(11).text_color(P.muted).child(f.open === key ? "▴" : "▾")))
-      .when(f.open === key, (el) => el.child(v_flex().id(`ddl-${key}`).max_h(190).overflow_y_scrollbar().rounded(8).border(1).border_color(P.line).bg(P.white).p(3).gap(1)
-        .children(items.map((it) => div().id(it.id).px(8).py(5).rounded(6).bg(it.on ? "#243d5d" : P.white).text_size(12).font_weight(it.on ? 700 : 400).text_color(it.on ? P.blue : P.ink)
-          .cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click((_e, cx) => { it.fn(); f.open = null; cx.notify(); this.rememberRows(); }).child(it.text)))));
+      .when(f.open === key, (el) => el.child(v_flex().id(`ddl-${key}`).max_h(190).overflow_y_scrollbar().rounded(RAD(8)).border(1).border_color(P.line).bg(P.white).p(3).gap(1)
+        .children(items.map((it) => div().id(it.id).px(8).py(5).rounded(RAD(6)).bg(it.on ? P.select : P.white).text_size(12).font_weight(it.on ? 700 : 400).text_color(it.on ? P.blue : P.ink)
+          .cursor_pointer().hover((s) => s.bg(P.raised)).on_click((_e, cx) => { it.fn(); f.open = null; cx.notify(); this.rememberRows(); }).child(it.text)))));
     // 5th X6: a folded row is a framed bar with a fixed height (flex_none: in the scrolling column it was squeezed to 0 high and only cut-off letters were left); ▸ / ▾ show it can be opened
-    const fold = (id, text, on, fn) => h_flex().id(id).flex_none().h(34).px(10).gap(8).items_center().rounded(8).border(1).border_color(P.line).bg(on ? "#2b3b50" : P.white).cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click((_e, cx) => { fn(); cx.notify(); this.rememberRows(); })
+    const fold = (id, text, on, fn) => h_flex().id(id).flex_none().h(34).px(10).gap(8).items_center().rounded(RAD(8)).border(1).border_color(P.line).bg(on ? P.raised : P.white).cursor_pointer().hover((s) => s.bg(P.raised)).on_click((_e, cx) => { fn(); cx.notify(); this.rememberRows(); })
       .child(div().flex_none().w(14).text_size(13).font_weight(700).text_color(P.ink).child(on ? "▾" : "▸")).child(div().text_size(13).font_weight(700).text_color(P.ink).child(text));
     const spaceName = child ? "리더와 같은 공간" : f.space === NEW_SPACE ? "새 프로젝트" : free ? "자유 공간" : list.find((s) => s.id === f.space)?.name || f.space;
     const projectItems = [...list.filter((s) => s.name !== FREE_NAME).map((s) => ({ id: `sp-${s.id}`, text: s.name || s.id, on: f.space === s.id, fn: () => { f.space = s.id; } })),
@@ -197,13 +203,13 @@ export class LaunchPart {
           .when(free, (el) => el.child(div().text_size(11).text_color(P.muted).child(term ? "자유 공간의 탭에서 시작합니다" : "자유 공간이 없으면 만든 뒤 시작합니다")))
           .when(f.space === NEW_SPACE && !term, (el) => el.child(div().text_size(11).text_color(P.muted).child("시작하면 첫 에이전트의 이름으로 새 공간을 만듭니다"))))
         .when(!term, (el) => el.child(v_flex().gap(5).child(label("제공자"))
-          .child(h_flex().gap(8).flex_wrap().children(KINDS6.map((k) => v_flex().id(`kind-${k.key}`).w(150).h(54).flex_none().gap(4).items_center().justify_center().rounded(10).border(f.kind === k.key ? 2 : 1)
-            .border_color(f.kind === k.key ? P.blue : P.line).bg(f.kind === k.key ? "#243d5d" : P.white).text_size(13).font_weight(f.kind === k.key ? 700 : 500).text_color(f.kind === k.key ? P.blue : P.ink)
-            .cursor_pointer().hover((s) => s.bg(f.kind === k.key ? "#243d5d" : "#2b3b50")).on_click((_e, cx) => { pick(k.key); cx.notify(); this.rememberRows(); })
+          .child(h_flex().gap(8).flex_wrap().children(KINDS6.map((k) => v_flex().id(`kind-${k.key}`).w(150).h(54).flex_none().gap(4).items_center().justify_center().rounded(RAD(10)).border(f.kind === k.key ? 2 : 1)
+            .border_color(f.kind === k.key ? P.blue : P.line).bg(f.kind === k.key ? P.select : P.white).text_size(13).font_weight(f.kind === k.key ? 700 : 500).text_color(f.kind === k.key ? P.blue : P.ink)
+            .cursor_pointer().hover((s) => s.bg(f.kind === k.key ? P.select : P.raised)).on_click((_e, cx) => { pick(k.key); cx.notify(); this.rememberRows(); })
             .child(icon(k.key === "shell" ? "terminal" : `p-${k.key}`, 22, f.kind === k.key ? P.blue : P.muted))
             .child(div().text_size(13).font_weight(f.kind === k.key ? 700 : 500).text_color(f.kind === k.key ? P.blue : P.ink).child(k.label)))))))
         .when(!term && !shell && models.length > 0, (el) => el.child(v_flex().gap(5).child(h_flex().gap(8).items_center().child(label("모델"))
-          .child(div().id("models-refresh").flex_none().px(8).py(2).rounded(6).border(1).border_color(P.line).bg(P.white).text_size(10).text_color(P.muted).cursor_pointer().hover((s) => s.bg("#2b3b50"))
+          .child(div().id("models-refresh").flex_none().px(8).py(2).rounded(RAD(6)).border(1).border_color(P.line).bg(P.white).text_size(10).text_color(P.muted).cursor_pointer().hover((s) => s.bg(P.raised))
             .on_click((_e, cx) => cx.spawn(async (cx) => this.refreshModels(cx))).child(f.refreshing ? "갱신 중…" : "목록 갱신")))
           .child(dropdown("model", models.find((m) => m.id === f.model)?.label ?? "기본", modelItems))))
         .when(!term && !shell && efforts.length > 0, (el) => el.child(v_flex().gap(5).child(label("추론 수준")).child(dropdown("effort", f.effort || "기본", effortItems))))
@@ -221,9 +227,9 @@ export class LaunchPart {
       // 18th F1 (office-fix18a): the error shares the summary's one line (an always-there 16-high error row + 12 gap was a 28 px empty band under the last row)
       .child(div().id("launch-summary").flex_none().text_size(11).text_color(f.error ? "#d6455d" : P.muted).child(f.error ?? summary))
       .child(h_flex().flex_none().gap(10).justify_end()
-        .child(div().id("launch-cancel").flex_none().px(16).py(8).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink)
+        .child(div().id("launch-cancel").flex_none().px(16).py(8).rounded(RAD(8)).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink)
           .cursor_pointer().on_click(() => close()).child("취소"))
-        .child(div().id("launch-go").flex_none().px(16).py(8).rounded(8).bg("#1e6fe0").text_size(13).font_weight(700).text_color("#ffffff")
+        .child(div().id("launch-go").flex_none().px(16).py(8).rounded(RAD(8)).bg(P.solid).text_size(13).font_weight(700).text_color("#ffffff")
           .cursor_pointer().on_click(submit).child(f.busy ? "시작 중…" : "에이전트 시작")));
   }
 }

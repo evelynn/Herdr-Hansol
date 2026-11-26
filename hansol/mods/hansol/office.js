@@ -18,7 +18,7 @@ import { openTerminalWindow } from "./terminal-window.js";
 import { panelFit, sideFit as sideFitBase } from "./panel.js";
 import { appHome, exec, focused, hc, readTextFile, run, setShared, shared, spaces, panes, writeTextFile } from "herdr";
 import { freeSweepPlan, sweepKey, goneError, moveByLabelPlan, plateKeyFor, roomsToRelease, roomRenames, runMovePlan, teamSpaceState, watchNewRooms } from "./actions.js";
-import { clipName, NAME_EM, NAME_EM_FULL } from "./ui-rules.js";
+import { clipName, NAME_EM, NAME_EM_FULL, chipPeople } from "./ui-rules.js";
 import { idleDeskPose, idleSlot, commanderInfo, tripShowsPapers, clearTransient, isSeatSpot, errandAllowed, tierFor, hash, moonPhase, wantsBreak, breakAllowed, breakSeconds, deskStage, seatedDepth, starsShown, moonShown, doorTimeline, doorStateOf, stuckAction, stuckCheck, liveKinds, replyWaiting, flockBirds, wingFrame, BIRD_SCALE, LEGEND_MARKS, LEGEND_PC_RULES, LEGEND_STRIP, fillPlates, l86WaitPose } from "./life.js";
 import { boardDots, boardElements, fixedBoard, WEATHER_KINDS, brandShown } from "./board.js";
 import { STATE, P, dot, chip, platform, platformIcon, stateOf, answeredView, blockedText, snapBox, fitZoom as fitZoomBase, bleedBox, planWaitText, RIGHT_EDGE, activityLabel } from "./common.js";
@@ -66,13 +66,16 @@ export function planKey(list, l86 = true) {
 // ★88-6 (office-walk89): who may start a floor plan now. One plan at a time in the whole App (shared "hansol.planflight" = { owner, at, demo }):
 // a part that finds a fresh flight of somebody else waits (the next draw asks again). A flight older than PLAN_FLIGHT_MS is a part that died.
 export const PLAN_FLIGHT_MS = 35000;
-export const planFlightBlocks = (fl, me, demo, now = Date.now(), guild = false) => !!fl && fl.owner !== me && !!fl.demo === !!demo && !!fl.guild === !!guild && now - Number(fl.at ?? 0) < PLAN_FLIGHT_MS;
+export const planFlightBlocks = (fl, me, demo, now = Date.now(), guild = false) => !!fl && fl.owner !== me && !!fl.demo === !!demo && (fl.guild || "") === (guild || "") && now - Number(fl.at ?? 0) < PLAN_FLIGHT_MS;
 // 2026-11-19 the guild hall layout: shared "hansol.layout" = "office" | "guild-dark" (kept in hansol-office/layout.json). It has its own planner
 // (py/hansol-guild.py), its own remembered floor and its own flight; the office's plan key is unchanged.
 export const GUILD = "guild-dark";
-export const isGuild = (v) => v === GUILD;
-export const sceneFileName = (demo, guild) => `last-scene${guild ? "-guild" : ""}${demo ? "-demo" : ""}.json`;
-export const guildScript = (officeScript) => String(officeScript ?? "").replace(/hansol-office\.py$/, "hansol-guild.py");
+export const MEADOW = "guild-meadow"; // 2026-11-24 the flower village square: its own planner py/hansol-meadow.py (py/sheets/meadow/DESIGN.md)
+export const isGuild = (v) => v === GUILD || v === MEADOW;
+export const MOSSES = "mosses"; // 2026-11-26 the MOSSES console: no planner, drawn by mosses.js (hansol/docs/mosses-theme.md); it replaced the "terminal" look
+const layoutOf = (v) => (isGuild(v) || v === MOSSES ? v : v === "terminal" ? MOSSES : "office"); // a layout name as kept: the old "terminal" is the MOSSES console now, anything else the office
+export const sceneFileName = (demo, guild) => `last-scene${guild ? (guild === MEADOW ? "-meadow" : "-guild") : ""}${demo ? "-demo" : ""}.json`;
+export const guildScript = (officeScript, theme) => String(officeScript ?? "").replace(/hansol-office\.py$/, theme === MEADOW ? "hansol-meadow.py" : "hansol-guild.py");
 // The parts of this mod that are alive (shared "hansol.parts" = { id: { at, born } }): more than one office part means a hot reload left an old one running.
 export const PART_ALIVE_MS = 60000;
 export const livePartsOf = (reg, now = Date.now()) => Object.entries(reg ?? {}).filter(([, v]) => v && now - Number(v.at ?? 0) < PART_ALIVE_MS).map(([id, v]) => ({ id, born: Number(v.born ?? 0) })).sort((a, b) => a.born - b.born);
@@ -109,6 +112,7 @@ export class OfficePart {
     const c = this.feed.config, lf = this.left;
     this.t ??= { init: Date.now() };
     if (!lf || !this.layoutKnown(cx)) return; // wait for the real size: one office.py call, not two (and for the chosen layout)
+    if (this.isMosses()) return; // 2026-11-26 the MOSSES layout plans nothing (mosses.js draws from the list)
     if (this.feed.state) this.t.state ??= Date.now();
     const view = `${Math.round(lf.width)}x${Math.round(Math.max(1, lf.height))}`;
     // Only who is here (id / source / parent) matters; ★90 (B): a status change never re-plans the floor.
@@ -121,7 +125,7 @@ export class OfficePart {
     // ★95 the builder's version (a hash the installer writes to builder-version.txt) is part of the plan key: an install that changed only the builder plans the floor once again; the same version never re-plans on a state change
     if (Date.now() - (this.verCheckAt ?? 0) > 15000) { this.verCheckAt = Date.now(); cx.spawn(async (cx2) => { try { const v = builderVersion(await readTextFile(`${appHome()}/hansol-office/builder-version.txt`)); if (v !== this.builderVer) { const first = this.builderVer == null; this.builderVer = v; if (!first) cx2.notify(); } } catch {} }); }
     const guild = this.guild();
-    const sig = `${guild ? "guild|" : ""}${demo ? "demo|" : ""}${shape}|${this.builderVer ?? ""}|${agentsJson}`;
+    const sig = `${guild ? `${guild}|` : ""}${demo ? "demo|" : ""}${shape}|${this.builderVer ?? ""}|${agentsJson}`;
     if (!(this.officeScript(c) && this.feed.state)) return;
     // The plan must hold everyone in the list. If it does not (another cast came in), plan again even when the signature
     // looks the same, at most every 5 s.
@@ -146,7 +150,7 @@ export class OfficePart {
     cx.spawn(async (cx) => {
       let scene = null, error = null, raw = null, notReady = null;
       try {
-        const script = guild ? guildScript(this.officeScript(c)) : this.officeScript(c), cfg0 = this.officeSettings(c), cfg = empties.length ? { ...(cfg0 ?? {}), empty_rooms: empties } : cfg0;
+        const script = guild ? guildScript(this.officeScript(c), guild) : this.officeScript(c), cfg0 = this.officeSettings(c), cfg = empties.length ? { ...(cfg0 ?? {}), empty_rooms: empties } : cfg0;
         const base = [script, "--agents", agentsJson, "--box", view, ...(demo ? ["--demo"] : [])];
         let r = await exec(c.python, cfg ? [...base, "--config", JSON.stringify(cfg)] : base);
         if (cfg && r.code && /unrecognized arguments/.test(r.stderr || "")) r = await exec(c.python, base); // older office.py
@@ -202,10 +206,10 @@ export class OfficePart {
   }
 
   loadRemembered(cx) {
-    if (this.rememberedTried || !this.layoutKnown(cx)) return;
+    if (this.rememberedTried || !this.layoutKnown(cx) || this.isMosses()) return;
     this.rememberedTried = true;
     const cast = !!this.demo?.(), guild = this.guild(), same = () => cast === !!this.demo?.() && guild === this.guild();
-    { const g = globalThis.__hudScene; if (!this.scene && g?.scene && g.demo === cast && !!g.guild === guild) { this.scene = g.scene; this.sceneSig = null; this.t ??= { init: Date.now() }; this.t.cached = Date.now(); } } // ★95-13: the last floor stays drawn while the new part plans (no wait for the file) // ★61: read on a cast switch too; dropped if the cast changed while it was being read
+    { const g = globalThis.__hudScene; if (!this.scene && g?.scene && g.demo === cast && (g.guild || "") === guild) { this.scene = g.scene; this.sceneSig = null; this.t ??= { init: Date.now() }; this.t.cached = Date.now(); } } // ★95-13: the last floor stays drawn while the new part plans (no wait for the file) // ★61: read on a cast switch too; dropped if the cast changed while it was being read
     cx.spawn(async (cx) => {
       try {
         const text = await readTextFile(`${appHome()}/hansol-office/${sceneFileName(cast, guild)}`);
@@ -286,7 +290,14 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   }
 
   // The frame of a walk by the person's own clock (not one shared counter): the walk starts on frame 0, one frame per WALK_FRAME_MS.
-  walkFrameIndex(p, n) { p.walkT0 ??= Date.now(); return (Math.floor((Date.now() - p.walkT0) / WALK_FRAME_MS) + n - 1) % n; } // starts on the last picture (#8: a foot on the ground), then #1 ... : the order [8,1,2,...,7]
+  walkFrameIndex(p, n) {
+    const step = Math.max(1, Math.round((this.tickMs ?? WALK_FRAME_MS) / WALK_FRAME_MS));
+    if (step > 1) { // walk_fps below 8: every redraw shows the next key pose, counted on the walk timer (wtick), not the clock: timer jitter on a clock showed two alike pictures
+      // in a row or skipped one. 8 pictures at 4 fps: #1 stride, #3 legs together, #5 the other stride, #7 legs together, one cycle a second (the old pace).
+      const len = Math.ceil(n / step), t = this.wtick ?? 0; p.walkK0 ??= t;
+      return ((((t - p.walkK0) % 24 + 24) % 24) % len) * step % n;
+    }
+    p.walkT0 ??= Date.now(); return (Math.floor((Date.now() - p.walkT0) / WALK_FRAME_MS) + n - 1) % n; } // (8 fps) starts on the last picture (#8: a foot on the ground), then #1 ... : the order [8,1,2,...,7]
 
   walkFrames() { return this.feed.config?.office?.walk_frames !== false; }
 
@@ -300,28 +311,39 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   // config.json: "office" is the script path (older) or the settings object (task2-2d), with the path then under another key.
   officeScript(c) { return typeof c?.office === "string" ? c.office : (c?.office_script ?? c?.office_py ?? null); }
   officeSettings(c) { return c?.office && typeof c.office === "object" ? c.office : (c?.office_settings ?? null); }
-  guild() { return isGuild(shared("hansol.layout")); }
+  layoutName() { return layoutOf(shared("hansol.layout")); } // 2026-11-26 "office", "guild-dark", "guild-meadow" or "mosses"
+  isMosses() { return layoutOf(shared("hansol.layout")) === MOSSES; }
+  guild() { const v = shared("hansol.layout"); return isGuild(v) ? v : ""; } // "" = the office; "guild-dark" or "guild-meadow" (both drawn by the guild planner)
   // The settings menu and the notice below: the choice is shared at once and kept for the next start.
   setLayout(v) {
-    const layout = isGuild(v) ? GUILD : "office";
+    const layout = layoutOf(v);
     setShared("hansol.layout", layout);
     (async () => { const path = `${appHome()}/hansol-office/layout.json`; let prev = null; try { prev = await readTextFile(path); } catch {} try { await writeTextFile(path, JSON.stringify({ layout }), prev); } catch {} })();
   }
   // The guild hall chosen while its pictures (py/sheets/guild-dark/, made by the user from README.md) are not all there: say how many, and offer the way back.
   guildNotReady(nr) {
-    const missing = (nr.missing ?? []).slice(0, 5);
+    const missing = (nr.missing ?? []).slice(0, 5), meadow = this.guild() === MEADOW;
     return v_flex().absolute().left(0).top(0).size_full().items_center().justify_center().gap(10).text_color(P.ink)
-      .child(div().text_size(18).font_weight(800).child("모험가 길드 회관 (다크)"))
+      .child(div().text_size(18).font_weight(800).child(meadow ? "꽃마을 광장" : "모험가 길드 회관 (다크)"))
       .child(div().text_size(13).text_color(P.muted).child(`그림 준비 안 됨: 시트 ${nr.ready ?? 0}/${nr.total ?? "?"}개`))
-      .child(div().text_size(12).text_color(P.muted).child("시트 폴더: py/sheets/guild-dark/  ·  만드는 법: 같은 폴더의 README.md"))
+      .child(div().text_size(12).text_color(P.muted).child(`시트 폴더: py/sheets/${meadow ? "meadow" : "guild-dark"}/  ·  만드는 법: 같은 폴더의 README.md`))
       .when(missing.length > 0, (el) => el.child(div().text_size(12).text_color(P.muted).child(`없는 시트: ${missing.join(", ")}${(nr.missing?.length ?? 0) > missing.length ? " …" : ""}`)))
       .child(div().id("guild-back").mt(6).px(14).h(32).flex().items_center().rounded(8).border(1).border_color(P.line).text_size(13).cursor_pointer()
-        .hover((s) => s.bg("#253449")).on_click(() => this.setLayout("office")).child("회사 레이아웃으로 돌아가기"));
+        .hover((s) => s.bg(P.hover)).on_click(() => this.setLayout("office")).child("회사 레이아웃으로 돌아가기"));
+  }
+  // 2026-11-26 (issue 7) the choice is kept by the floor itself: the settings menu is a popup closed right after the press, so its own write of
+  // layout.json was cut off (the choice showed but a reload went back). Here, any shared choice not yet written is written (compare-and-swap, as setLayout).
+  persistLayout(cx) {
+    const v = shared("hansol.layout");
+    if (v == null || this.savedLayout === undefined || v === this.savedLayout || this.layoutSaving) return;
+    this.layoutSaving = true;
+    cx.spawn(async () => { const path = `${appHome()}/hansol-office/layout.json`; let prev = null; try { prev = await readTextFile(path); } catch {}
+      try { await writeTextFile(path, JSON.stringify({ layout: layoutOf(v) }), prev); this.savedLayout = v; } catch {} finally { this.layoutSaving = false; } });
   }
   // The layout chosen last time (hansol-office/layout.json) is read once; no floor is planned before it is known, so a start never plans the wrong one first.
   layoutKnown(cx) {
     if (shared("hansol.layout") != null) return true;
-    if (!this.layoutReading) { this.layoutReading = true; cx.spawn(async () => { let v = GUILD; try { v = JSON.parse(await readTextFile(`${appHome()}/hansol-office/layout.json`))?.layout ?? GUILD; } catch {} /* 2026-11-19 the guild hall is the default, the office the second */ if (shared("hansol.layout") == null) setShared("hansol.layout", isGuild(v) ? GUILD : "office"); }); }
+    if (!this.layoutReading) { this.layoutReading = true; cx.spawn(async () => { let v = MOSSES; try { v = JSON.parse(await readTextFile(`${appHome()}/hansol-office/layout.json`))?.layout ?? MOSSES; } catch {} /* 2026-11-27 the MOSSES console is the default (user); 2026-11-19 it was the guild hall */ if (shared("hansol.layout") == null) setShared("hansol.layout", layoutOf(v)); this.savedLayout = layoutOf(v); }); }
     return false;
   }
 
@@ -1148,19 +1170,20 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
 
   officeInner(list, cx) {
     this.talkList = list; // (the talk bubble names who a speaker talks with)
-    const demo = !!(shared("hansol.demo") || this.feed.config?.demo), guild = this.guild();
-    if ((this.lastDemo !== undefined && demo !== this.lastDemo) || (this.lastGuild !== undefined && guild !== this.lastGuild)) { // another cast (or layout): place everyone again, no exits
+    const demo = !!(shared("hansol.demo") || this.feed.config?.demo), guild = this.guild(), term = this.isMosses();
+    this.persistLayout(cx);
+    if ((this.lastDemo !== undefined && demo !== this.lastDemo) || (this.lastGuild !== undefined && guild !== this.lastGuild) || (this.lastTerm !== undefined && term !== this.lastTerm)) { // another cast (or layout): place everyone again, no exits
       this.people = new Map(); this.primed = false; this.selId = null; this.panel = null; this.sceneSig = null; this.leaveTimer = null; this.artNotReady = null; this.walkSig = null; this.fitScene = null; // (fitScene: the next floor is fitted to the window again)
       this.scene = null; this.rememberedTried = false; this.sceneError = null; this.sceneFails = 0; this.waitSince = Date.now(); // the other cast has its own floor (never drawn on the other's): its last one is read from its own file (sceneFileName) at once, the new plan replaces it
     }
-    this.lastDemo = demo; this.lastGuild = guild;
+    this.lastDemo = demo; this.lastGuild = guild; this.lastTerm = term;
     this.ph("load");
     this.loadRemembered(cx);
-    this.loadFaces(cx);
+    if (!term) this.loadFaces(cx);
     this.ensureScene(list, cx);
     this.drawSeq = (this.drawSeq ?? 0) + 1; // ★71-1 one number per draw: the people drawn in it are compared by the live check
-    try { this.roomLife(list, cx); } catch (e) { this.dbgErr(e, "roomLife"); }
-    try { this.sync(list, cx); this.checkLayout(this.scene, cx); } catch (e) { this.dbgErr(e, "sync"); } // a failure in the walk logic must not take the furniture and people down with it
+    if (!term) try { this.roomLife(list, cx); } catch (e) { this.dbgErr(e, "roomLife"); }
+    if (!term) try { this.sync(list, cx); this.checkLayout(this.scene, cx); } catch (e) { this.dbgErr(e, "sync"); } // a failure in the walk logic must not take the furniture and people down with it
     const pick = shared("hansol.pick"); // from the HUD band's state counts: jump to that state's first person
     if (this.pickAt === undefined) this.pickAt = pick?.at ?? null;
     if (pick?.at && pick.at !== this.pickAt && Date.now() - pick.at < 20000) { // ★100-3 a press is fresh: an old pick must not select somebody again after an install's reload (a tag that never goes)
@@ -1193,7 +1216,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const termOn = this.syncTerm(sel, list, left, cx); // an App agent: its real terminal in a window; the side panel stays shut
     this.autoFit(); // ★110 (office-fix7, gap 7): the window's width (termBox) is only known here; the fit above ran with 0 on the draw that opened it and nothing drew again, so the floor stayed 805px wide in a 745px gap. Fit again now (it does nothing when the margin did not change).
     if (this.open && !termOn) this.syncPanel(sel, list, cx);
-    const shell = div().id("office-root").relative().size_full().overflow_hidden().bg("#101827")
+    const shell = div().id("office-root").relative().size_full().overflow_hidden().bg(this.scene?.backdrop ?? "#101827") // 2026-11-24 a layout may bring its own colour round the floor (the meadow: a neutral dark grey)
       .on_size_change((size, cx) => { this.left = size; cx.notify(); })
       .on_mouse_down("left", (e) => { if (!this.overColumn(e.local_position, e.position)) this.dragStart(e.position.x, e.position.y); }) // (★74-2 a press over the right column / terminal never starts a drag) ★30-6 drag the floor (only on the empty floor: a pressable thing stops the press; and only after a small move)
       .on_mouse_move((e, cx) => { if (this.resize) { this.resizeMove(e.position.x, cx); return; } if (this.dragFrom && this.overColumn(e.local_position, e.position)) { this.dragFrom = null; return; } this.dragMove(e.position.x, e.position.y, cx); }) // (★74-2 the pointer went over the terminal: the drag ends, the floor never follows it)
@@ -1201,6 +1224,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       .on_scroll_wheel((e, cx) => this.wheelZoom(e.delta?.y ?? 0, e.local_position, cx, e.position))
       .on_hover((h, _cx) => { if (!h) this.dragFrom = null; }) // the pointer left the floor: a drag never goes on
       .on_click((_e, cx) => { this.dragFrom = null; if (this.dragMoved || this.justDragged()) return; if (this.open || this.termPick) this.closePanel(cx); }); // the empty floor closes the panel (★95-12: never after a drag: dragMoved stays until the next press)
+    if (term) return this.mossesFloor(shell, list, sel, left, termOn, cx); // 2026-11-26 the MOSSES layout (mosses.js): its own floor, the same tail
     const sc = this.scene;
     if (!sc && this.artNotReady && guild) return shell.child(this.guildNotReady(this.artNotReady));
     if (!sc) {
@@ -1324,8 +1348,8 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
           .when(!!sc.clock.plaque, (e) => e.child(image(sc.clock.plaque).absolute().left(0).top(0).w(cw).h(ch)))
           .when(!sc.clock.plaque, (e) => e.rounded(4).bg("#3a2616").border(1).border_color("#c9a24a"))
           .child(h_flex().absolute().left(fx * cw).top(fy * ch).w(fw * cw).h(fh * ch).gap(Math.max(3, tsz * 0.35)).items_center().justify_center().whitespace_nowrap()
-            .child(div().text_size(tsz).font_weight(800).text_color("#f4e3b5").child(`${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`))
-            .child(div().text_size(Math.max(8, tsz * 0.62)).font_weight(700).text_color("#e0c890").child(`${icon} ${word}`)));
+            .child(div().text_size(tsz).font_weight(800).text_color(sc.clock.ink ?? "#f4e3b5").child(`${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`))
+            .child(div().text_size(Math.max(8, tsz * 0.62)).font_weight(700).text_color(sc.clock.ink2 ?? "#e0c890").child(`${icon} ${word}`)));
         layers.push({ depth: (sc.door.depth ?? 0) + 0.02, order: 3, el: face });
       }
       const packed = (sc.island_doors ?? []).filter((d) => d.pack);
@@ -1520,14 +1544,14 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       if (shared("hansol.grid") === true && sc.debug_overlay) root.child(image(sc.debug_overlay).absolute().left(ox).top(oy).w(sc.width * k).h(sc.height * k).opacity(0.7));
     }
     if (G) { // time of day: a translucent colour over everything (a rectangle, not a picture); night lamps over the islands that have someone working
-      const tone = period === "evening" ? "#ff8a3d14" : null; // evening: a warm tint only; night: none (see shade_tiles at 0.1)
+      const tone = sc.tod ? (sc.tod[period] ?? null) : period === "evening" ? "#ff8a3d14" : null; // evening: a warm tint only; night: none (see shade_tiles at 0.1). sc.tod (out of doors, the flower village): its own colour over everything
       if (Date.now() < (this.flashUntil ?? 0)) root.child(div().id("flash").absolute().left(0).top(0).size_full().bg("#ffffff66")); // a flash of lightning
       const night = period === "night";
       const glow = this.lifeParts?.glow_ceiling?.file, lampG = this.lifeParts?.glow_lamp?.file;
       const dark = { morning: 0, day: 0, evening: 0.04, night: 0.1 }[period] ?? 0; // the room stays almost as bright as by day (the lights are on); only the view out of the window goes dark
       if (sc.shade_tiles?.length) { // the shadow comes as small pictures (one set, made by office.py); only their opacity changes with the hour
         if (dark > 0) for (const [n, t] of sc.shade_tiles.entries()) { const { clip, img } = bleedBox(ox, oy, k, t, 0), el = image(t.file).absolute().left(img[0]).top(img[1]).w(img[2]).h(img[3]); root.child(clip ? div().id(`shade-${n}`).absolute().left(clip[0]).top(clip[1]).w(clip[2]).h(clip[3]).overflow_hidden().child(el.opacity(dark)) : el.id(`shade-${n}`).opacity(dark)); } // ★62-2 whole pixels, edge to edge (a see-through shade must not overlap itself)
-      } else if (tone && sc.grid) { // (older plans) the veil covers only the floor and its walls (a hexagon cut into thin strips); the beige ground outside stays as it is
+      } else if (tone && sc.grid && !sc.tod) { // (older plans) the veil covers only the floor and its walls (a hexagon cut into thin strips); the beige ground outside stays as it is
         const g = sc.grid, step = 14, H = 62;
         if (this.veilFor !== sc.scene_id || this.veilK !== k) { // x-extent of the floor (and the walls above its back edges) per horizontal strip, from the floor map
           this.veilFor = sc.scene_id; this.veilK = k;
@@ -1635,10 +1659,16 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       const hh = detail && !big ? h + 4 : h; // ★88-6 the box that is really drawn (a hovered / chosen tag is 4 px taller than the one the places were checked with: two of them overlapped)
       let r = { x: hx - w / 2, y: hy - h - 3, w, h: hh }; // (the top stays where it was: the tests and the eye know it; only the box that the overlap checks use is the real one)
       let near = nearbyTag(r, left.width - panelW, left.height, (q) => !!hit_(q, id) || onNoGo(q));
-      if (!near && !big) {
+      const keepWork = st.key === "working" || st.key === "shell"; // the current work stays readable over the head
+      if (!near && !big && !keepWork) {
         sname = ({ blocked: "승인", working: "작업", done: "보고", idle: "대기", shell: "셸 대기" })[st.key] ?? st.label;
         w = Math.round(36 + text(sname) + rankChipW(a));
         near = nearbyTag({ ...r, x: hx - w / 2, w }, left.width - panelW, left.height, (q) => !!hit_(q, id) || onNoGo(q));
+      }
+      if (!near && keepWork) { // no free place near the head: the full tag goes over the head anyway, kept inside the floor (it may overlap what is there)
+        const fw = left.width - panelW, fh = left.height;
+        const onTag = (q) => placed.some((t) => q.x < t.x + t.w && t.x < q.x + q.w && q.y < t.y + t.h && t.y < q.y + q.h); // 2026-11-26 (flower village, close seats): at least not over another tag
+        near = nearbyTag(r, fw, fh, onTag) ?? { ...r, x: Math.max(4, Math.min(r.x, fw - 4 - r.w)), y: Math.max(4, Math.min(r.y, fh - 4 - r.h)) };
       }
       if (!near) {
         const d = Math.max(9, 10 * k), dur = this.transMs(p), headY = oy + pos[1] * k - sh * this.headFrac(id, a, p, sc);
@@ -1668,7 +1698,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         .when(!!line, (e) => e.child(line)).child(tag) });
     }
     const byKey = (m, n) => (m.k < n.k ? -1 : 1);
-    if (crowdWait.size) { const dr0 = sc.door?.rect, f = waiters[0], la = sc.door?.label_at, hx = la ? ox + la[0] * k : dr0 ? ox + (dr0[0] + dr0[2] / 2) * k : ox + f.pos[0] * k, hy = la ? oy + la[1] * k - 10 : dr0 ? oy + dr0[1] * k - 26 : oy + f.pos[1] * k - 100 * k; /* label_at: the floor in front of the door, under the waiting crowd */ smallA.push({ k: "~wait", el: div().id("tag-wait").absolute().left(hx - 50).top(hy).px(8).py(3).rounded(10).bg("#1b2637f2").border(1.5).border_color("#8a94a6").whitespace_nowrap().text_size(11).font_weight(700).text_color("#e7edf6").child(`입구 ${crowdWait.size}명`) }); }
+    if (crowdWait.size) { const dr0 = sc.door?.rect, f = waiters[0], la = sc.door?.label_at, hx = la ? ox + la[0] * k : dr0 ? ox + (dr0[0] + dr0[2] / 2) * k : ox + f.pos[0] * k, hy = la ? oy + la[1] * k - 10 : dr0 ? oy + dr0[1] * k - 26 : oy + f.pos[1] * k - 100 * k; /* label_at: the floor in front of the door, under the waiting crowd */ smallA.push({ k: "~wait", el: div().id("tag-wait").absolute().left(hx - 50).top(hy).px(8).py(3).rounded(10).bg((P.paper + "f2")).border(1.5).border_color("#8a94a6").whitespace_nowrap().text_size(11).font_weight(700).text_color(P.ink).child(`입구 ${crowdWait.size}명`) }); }
     root.children([...smallA.sort(byKey).map((x) => x.el), ...bigA.sort(byKey).map((x) => x.el), ...talkA.sort(byKey).map((x) => x.el)]); // large bubbles are drawn over the small tags
     let cardRect = null; // where the approval card ended up (the sign gives way to it)
     { // ONE card for the approvals: the first request, a blue approve button, "N more" for the rest. Clicking the name opens the detail on the right.
@@ -1712,16 +1742,16 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         }
         this._cardMemo = { key: cardKey, v: { small, cw, chh, cl, ct } }; }
         cardRect = { x: cl, y: ct - 14, w: cw, h: chh };
-        if (small) root.child(h_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).h(chh).px(6).gap(5).items_center().rounded(8).bg("#1b2637").border(1.5).border_color(STATE.blocked.color)
+        if (small) root.child(h_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).h(chh).px(6).gap(5).items_center().rounded(8).bg(P.paper).border(1.5).border_color(STATE.blocked.color)
           .child(this.stateMark(STATE.blocked, 14)).child(div().flex_1().min_w(0).truncate().text_size(11).font_weight(800).text_color(P.ink).child(`승인 대기${waiting.length}`))
-          .child(div().id("approval-ok").flex_none().px(8).py(2).rounded(7).bg("#1e6fe0").text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("승인")));
-        else root.child(v_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).items_center().child(v_flex().w(cw).h(chh).px(6).py(4).gap(2).rounded(8).bg("#1b2637").border(1.5).border_color(STATE.blocked.color)
+          .child(div().id("approval-ok").flex_none().px(8).py(2).rounded(7).bg(P.solid).text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("승인")));
+        else root.child(v_flex().id("approval-card").absolute().left(cl).top(ct - 14).w(cw).items_center().child(v_flex().w(cw).h(chh).px(6).py(4).gap(2).rounded(8).bg(P.paper).border(1.5).border_color(STATE.blocked.color)
           .child(h_flex().gap(6).items_center().child(this.stateMark(STATE.blocked, 14))
             .child(div().id("approval-name").flex_1().min_w(0).truncate().text_size(11).font_weight(800).text_color(P.ink).cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); this.select(a0, cx); }).child(`승인 대기 ${waiting.length}건`)))
           .child(h_flex().gap(6).items_center().child(div().flex_none().text_size(12).text_color(P.muted).child("▤"))
             .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(P.ink).child((() => { const t0 = String(blockedText(a0)).split("\n")[0] || this.shortName(a0); return med && [...t0].length > 14 ? [...t0].slice(0, 13).join("") + "…" : t0; })())))
           .child(h_flex().gap(8).items_center()
-            .child(div().id("approval-ok").flex_none().px(12).py(2).rounded(7).bg("#1e6fe0").text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("승인"))
+            .child(div().id("approval-ok").flex_none().px(12).py(2).rounded(7).bg(P.solid).text_size(11).font_weight(700).text_color("#ffffff").cursor_pointer().on_click(go0).child("승인"))
             .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(P.muted).child(this.shortName(a0)))))
           );  // (the tail is drawn below: a thin line and ▼ down to the desk top)
         { const bx0 = cl + cw / 2, by0 = ct - 14 + chh; if (T[1] - by0 > 2) root.child(div().id("approval-tail-line").absolute().left(bx0 - 0.75).top(by0).w(1.5).h(T[1] - by0 - 8).bg(STATE.blocked.color)); root.child(div().id("approval-tail").absolute().left(bx0 - 6).top(Math.max(by0, T[1] - 14)).text_size(11).text_color(STATE.blocked.color).child("▼")); } // the tail: at most 60 px, pointing at the desk
@@ -1739,15 +1769,15 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         if (hit) [sx, sy] = hit;
       }
       const el = div().id(`${kind}-sign`).absolute().left(sx).top(sy).w(sw).h(sh).flex().items_center().justify_center().whitespace_nowrap().text_size(11).font_weight(800).text_color(P.ink)
-        .when(!w0.sign_file, (e) => e.rounded(6).bg("#1b2637").border(1).border_color("#3b4b60")).when(!!w0.sign_file, (e) => e.child(image(w0.sign_file).absolute().left(0).top(0).w(sw).h(sh)));
+        .when(!w0.sign_file, (e) => e.rounded(6).bg(P.paper).border(1).border_color(P.line)).when(!!w0.sign_file, (e) => e.child(image(w0.sign_file).absolute().left(0).top(0).w(sw).h(sh)));
       root.child(el.child(div().relative().child(label)));
     }
     // island plates: a mark + the island's name + "3人・承認1" on the island's front edge (A's islands[].plate)
     for (const isl of sc.islands ?? []) if (isl.plate?.at) {
       const mine = (isl.seats ?? []).map((sid) => seatPid().get(sid)).filter(Boolean), wt = mine.filter((pid) => byId.get(pid)?.status === "blocked").length;
-            if (this.plateOpen === isl.key) root.child(v_flex().id(`plist-${isl.key}`).on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).absolute().left(ox + isl.plate.at[0] * k - 90).top(oy + isl.plate.at[1] * k + 16).w(180).p(6).gap(2).rounded(8).bg(P.paper).border(1).border_color("#3b4b60")
+            if (this.plateOpen === isl.key) root.child(v_flex().id(`plist-${isl.key}`).on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).absolute().left(ox + isl.plate.at[0] * k - 90).top(oy + isl.plate.at[1] * k + 16).w(180).p(6).gap(2).rounded(8).bg(P.paper).border(1).border_color(P.line)
         .when(true, (el) => { const rm = this.roomMenu?.(isl, mine.map((pid) => byId.get(pid)).filter(Boolean)); return rm ? el.child(rm) : el; }) // ★61-1 the room's operations (room.js)
-        .children(mine.slice(0, 12).map((pid) => { const q = byId.get(pid); return q ? h_flex().id(`pl-${pid}`).gap(5).items_center().px(4).py(2).rounded(5).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).hover((e) => e.bg("#2b3b50")).on_click((_e, cx) => { this.plateOpen = null; this.select(q, cx); }).child(dot(stateOf(q).color, 7)).child(div().flex_1().min_w(0).truncate().text_size(10).text_color(P.ink).child(this.shortName(q))) : div(); })));
+        .children(mine.slice(0, 12).map((pid) => { const q = byId.get(pid); return q ? h_flex().id(`pl-${pid}`).gap(5).items_center().px(4).py(2).rounded(5).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).hover((e) => e.bg(P.raised)).on_click((_e, cx) => { this.plateOpen = null; this.select(q, cx); }).child(dot(stateOf(q).color, 7)).child(div().flex_1().min_w(0).truncate().text_size(10).text_color(P.ink).child(this.shortName(q))) : div(); })));
       const srcCol = isl.source === "t3" ? "#7c4dff" : isl.source === "tui" ? "#27ae60" : "#2f80ed"; // the island's name: small grey words on the floor at the island's front edge (no board); a small orange mark only when somebody waits for approval
       const txt = `${isl.plate.arrow ? `${isl.plate.arrow} ` : ""}${clipName(isl.title, 12)}  ${mine.length ? `${mine.length}명` : "비어 있음"}`, pw = Math.min(210, 24 + [...txt].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 13 : 7.8), 0) + (wt > 0 ? 36 : 0)); // 2nd-105 N4: cut at 12 em (was 14) and a wider box so the end is "…", never a bare "_" // 12 px words (★100-4: no ＋ any more)
       if (isl.banner?.face) { // the guild hall: the workspace's name on its standard's cloth (up to 3 lines)
@@ -1772,7 +1802,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
         continue;
       }
       root.child(h_flex().id(`plate-${isl.key}`).cursor_pointer().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); }).on_click((_e, cx) => { cx.stop_propagation(); this.plateOpen = this.plateOpen === isl.key ? null : isl.key; cx.notify(); })
-        .absolute().left(ox + isl.plate.at[0] * k - pw / 2).top(oy + isl.plate.at[1] * k - 10).w(pw).h(20).gap(5).items_center().justify_center().rounded(6).bg(isl.color ? "#2a1d12ee" : "#1b2637e8").border(1).border_color(isl.color ? "#c9a24a" : "#d9d2c3").whitespace_nowrap()
+        .absolute().left(ox + isl.plate.at[0] * k - pw / 2).top(oy + isl.plate.at[1] * k - 10).w(pw).h(20).gap(5).items_center().justify_center().rounded(6).bg(isl.color ? "#2a1d12ee" : (P.paper + "e8")).border(1).border_color(isl.color ? "#c9a24a" : "#d9d2c3").whitespace_nowrap()
         .child(dot(isl.color ?? srcCol, 6)) // (the guild hall: a dark wood plate with a gold edge, the dot in the workspace's standard colour) // self-review-0505 #3: 11 px light grey on a see-through grey read poorly on the floor: 12 px dark words on a near-white card
         .child(div().min_w(0).truncate().text_size(12).font_weight(700).text_color("#cad5e4").child(txt))
         .when(wt > 0, (e) => e.child(h_flex().flex_none().gap(3).px(5).items_center().rounded(8).bg("#fde7cf").child(dot(STATE.blocked.color, 6)).child(div().text_size(11).font_weight(700).text_color(STATE.blocked.color).child(`${wt}`)))));
@@ -1821,13 +1851,18 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       cx.timer.after(150, (cx) => { if (this.bird) { this.bird.go = true; if (!this.bird.flock.length) this.bird.goSet[0] = true; cx.notify(); } });
       for (const fb of this.bird.flock) cx.timer.after(150 + fb.lag, (cx) => { if (this.bird) { this.bird.goSet[fb.i] = true; cx.notify(); } }); // one after the other, a little apart
       const span = 9400 + Math.max(0, ...this.bird.flock.map((q) => q.lag));
-      const wing = cx.timer.every(180, (cx) => { if (!this.bird) return; this.birdTick = (this.birdTick ?? 0) + 1; if (!this.needTick) cx.notify(); }); // (while somebody walks, the walk's 125 ms redraw shows the wings too: no second redraw) cx.timer.after(span, () => { try { wing.cancel?.(); } catch {} }); // frames change only while they cross
+      const wing = cx.timer.every(180, (cx) => { if (!this.bird) return; this.birdTick = (this.birdTick ?? 0) + 1; if (!this.needTick) cx.notify(); }); // (while somebody walks, the walk's 125 ms redraw shows the wings too: no second redraw)
+      cx.timer.after(span, () => { try { wing.cancel?.(); } catch {} }); // frames change only while they cross; the cancel had slipped into the comment above, so every flight left a 180 ms timer running
       cx.timer.after(span, (cx) => { this.bird = null; this.birdAt = Date.now() + 120000 + Math.random() * 180000; cx.notify(); });    });
     this.needTick = this.walkFrames() && [...(this.people ?? []).values()].some((p) => this.moving(p));
-    if (this.needTick && !this.tickTimer) this.tickTimer = cx.timer.every(125, (cx) => { if (this.needTick) { this.wtick = ((this.wtick ?? 0) + 1) % 24; cx.notify(); } });
+    // config office.walk_fps (default 4; 8 = every picture): the walk redraws this often. The picture is chosen by time (walkFrameIndex), so 4 skips every other picture and the
+    // step keeps its pace. Measured: while somebody walked the floor redrew ~8.5 times a second, almost all of them this timer (it was 125 ms).
+    const tickMs = Math.round(1000 / Math.min(8, Math.max(1, Number(this.feed.config?.office?.walk_fps) || 4)));
+    if (this.tickTimer && this.tickMs !== tickMs) { try { this.tickTimer.cancel?.(); } catch {} this.tickTimer = null; } // a changed setting (or a reloaded mod with the old 125 ms timer) gets a new timer
+    if (this.needTick && !this.tickTimer) { this.tickMs = tickMs; this.tickTimer = cx.timer.every(tickMs, (cx) => { if (this.needTick) { this.wtick = ((this.wtick ?? 0) + 1) % 24; cx.notify(); } }); }
     if (!G) for (const l of labels) root.child(l.el); // (a grid scene drew them with the floor)
     shell.child(root);
-    if (this.t?.cached && !this.t.done) shell.child(div().id("plan-wait").absolute().right(10).top(8).px(6).py(2).rounded(6).bg("#1b2637e8").text_size(10).text_color(P.muted).child("갱신 중…")); // ★95-13: a small mark in the corner while the last floor is shown and the new plan is made
+    if (this.t?.cached && !this.t.done) shell.child(div().id("plan-wait").absolute().right(10).top(8).px(6).py(2).rounded(6).bg((P.paper + "e8")).text_size(10).text_color(P.muted).child("갱신 중…")); // ★95-13: a small mark in the corner while the last floor is shown and the new plan is made
     this.ph("legend");
     if (this.legendCollapsed === undefined) { this.legendCollapsed = false; cx.spawn(async (cx) => { try { const t = await readTextFile(`${appHome()}/hansol-office/legend.json`); const j = t ? JSON.parse(t) : null; if (j && j.collapsed === true) { this.legendCollapsed = true; cx.notify(); } else if (j && j.hidden === true) { try { await writeTextFile(`${appHome()}/hansol-office/legend.json`, JSON.stringify({ collapsed: false }), null); } catch {} } } catch {} }); } // ★50-7a: only collapsed:true folds; an old hidden:true (the × of old) is migrated once to open (★38's always-on is the default)
     const lgX = 10 + (this.termPanel && !this.demo?.() && this.panelOpen?.() ? this.panelWidth() : 0); // ★72-3: right of the list only while it is open (the folded strip is at the top: r46)
@@ -1839,10 +1874,10 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     if (!(this.floorLegend ?? FLOOR_LEGEND)) { /* ★89 the floor legend is not drawn (lgShell is a dummy): building ~20 rows each frame cost 5-15 ms of the 50 ms budget, a walk was cut by it */ } else if (this.legendCollapsed || (!lgOpened && lgCover())) { // ★43 collapsed: the small "범례" button stays at the lower-left and opens it again
       // self-review-0505 #7: four pictures with their words (11 px, as the board's words: ★47-1) and "凡例 ▸"; pressing anywhere opens the whole legend
       const pic = (part) => { const q = this.lifeParts?.[part], box = div().flex_none().w(24).h(20).flex().items_center().justify_center(); if (!q?.file) return box; const s = Math.min(22 / q.w, 18 / q.h); return box.child(image(q.file).w(Math.max(1, q.w * s)).h(Math.max(1, q.h * s))); };
-      lgShell.child(h_flex().id("legend").absolute().left(lgX).top(left.height - 54).h(44).px(8).gap(8).items_center().rounded(8).cursor_pointer().bg("#1b2637ee").border(1).border_color("#3b4b60").text_size(11).text_color(P.ink)
-        .hover((s) => s.bg("#1b2637")).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      lgShell.child(h_flex().id("legend").absolute().left(lgX).top(left.height - 54).h(44).px(8).gap(8).items_center().rounded(8).cursor_pointer().bg((P.paper + "ee")).border(1).border_color(P.line).text_size(11).text_color(P.ink)
+        .hover((s) => s.bg(P.paper)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .children(LEGEND_STRIP.map((m) => v_flex().id(`legend-strip-${m.key}`).flex_none().gap(1).items_center().child(pic(m.part)).child(div().text_size(11).text_color(P.ink).child(m.label))))
-        .child(div().flex_none().w(1).h(30).bg("#3b4b60"))
+        .child(div().flex_none().w(1).h(30).bg(P.line))
         .on_click((_e, cx) => { cx.stop_propagation(); this.legendCollapsed = false; this.legendUserOpen = true; cx.notify(); cx.spawn(async () => { try { await writeTextFile(`${appHome()}/hansol-office/legend.json`, JSON.stringify({ collapsed: false }), null); } catch {} }); })
         .child(div().flex_none().text_size(11).font_weight(700).text_color(P.muted).child("범례 ▸")));
     } else { // ★38 the legend is always on: a small board fixed at the window's lower-left, with the picture of what is drawn
@@ -1867,13 +1902,20 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       };
       const marks = block("소품과 표시", LEGEND_MARKS), pc = block(`책상 PC ${pcOpen ? "▾" : "▸"}`, pcOpen ? LEGEND_PC_RULES : [], true);
       const contents = twoCol ? h_flex().gap(10).items_start().child(marks).child(pc) : v_flex().gap(4).child(marks).child(pc);
-      lgShell.child(v_flex().id("legend").absolute().left(lgX).top(left.height - 10 - H).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).w(W).h(H).p(7).gap(0).overflow_hidden().rounded(8).bg("#1b2637f2").border(1).border_color("#3b4b60").text_size(11)
+      lgShell.child(v_flex().id("legend").absolute().left(lgX).top(left.height - 10 - H).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).w(W).h(H).p(7).gap(0).overflow_hidden().rounded(8).bg((P.paper + "f2")).border(1).border_color(P.line).text_size(11)
         .child(h_flex().h(19).flex_none().gap(4).items_center().child(div().flex_1().text_size(12).font_weight(700).text_color(P.ink).child("범례")).child(div().id("legend-collapse").cursor_pointer().text_size(11).text_color(P.muted).on_click((_e, cx) => { this.legendCollapsed = true; cx.notify(); cx.spawn(async () => { try { await writeTextFile(`${appHome()}/hansol-office/legend.json`, JSON.stringify({ collapsed: true }), null); } catch {} }); }).child("접기")))
         .child(div().h(2).flex_none())
         .child(div().id("legend-body").h(bodyH).flex_none().min_h(0).overflow_y_scrollbar().on_scroll_wheel((_e, cx) => cx.stop_propagation()).child(contents)));
     }
+    this.floorTail(shell, list, sel, left, termOn, cx);
+    const out = shell;
+    unswap(); return out;
+  }
+
+  // The controls and panels over any floor (the office's, the guild's, the terminal's): zoom, the memory notice, the right window's handle, the list, the chat panel.
+  floorTail(shell, list, sel, left, termOn, cx) {
     this.ph("controls");
-    shell.child(this.zoomControls(left));
+    if (!this.isMosses()) shell.child(this.zoomControls(left)); // (the MOSSES floor fits itself: no zoom)
     { const mn = this.memNotice(left); if (mn) shell.child(mn); } // ★90 (H)
     if (this.termBox && !this.rightCollapsed && !this.demo?.()) { // ★84 the right window's left border (★103-4 none while it is folded): a handle flush with it; while dragging a thin line shows where it will be (the window opens again on release)
       const bx = this.termBox, gx = this.ghostW ? Math.round((this.left?.width ?? bx.x + bx.w + RIGHT_EDGE) - RIGHT_EDGE - this.ghostW) : null;
@@ -1884,8 +1926,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     if (this.termPanel && !this.demo?.()) shell.child(this.termPanel(left, list, cx)); // ★72-3 the terminals' list at the left edge (real data only)
     if (this.open && !termOn && sel) shell.child(this.chatPanel(sel, list, { width: left.width, height: left.height, open: true, close: (cx) => this.closePanel(cx), select: (p, cx) => this.select(p, cx) }));
     else this.panelShown = false;
-    const out = shell;
-    unswap(); return out;
+    return shell;
   }
 
   // ★52-3 actual legend geometry: padding + border + title + gap, then bounded content.
@@ -1918,7 +1959,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const sc = this.scene, list = this.lastList; if (!sc?.board || !list || !this.viewBox) return;
     this._bp = "start"; // (★94 diagnosis: the step a thrown null stopped at is written with the error)
     const k = this.viewBox.k, b = sc.board, byId = new Map(list.map((a) => [a.id, a])), wx = this.weatherNow();
-    const dn = list.filter((a) => a.status === "done").length, wk = list.filter((a) => a.status === "working").length, wt = list.filter((a) => a.status === "blocked").length;
+    const dn = chipPeople(list, "done").length, wk = chipPeople(list, "working").length, wt = chipPeople(list, "blocked").length; // the band's rule: a shell-waiting agent is not counted as WORK
     const nowB = new Date();
     const fp = b.face?.length ? b.face : b.rect ? [[b.rect[0], b.rect[1]], [b.rect[0] + b.rect[2], b.rect[1] + b.rect[3]]] : [], avoid = [];
     if (fp.length) { const bx0 = Math.min(...fp.map((q) => q[0])), bx1 = Math.max(...fp.map((q) => q[0])), by0 = Math.min(...fp.map((q) => q[1])), by1 = Math.max(...fp.map((q) => q[1])), near = (x, y, w, h) => x < bx1 + 24 && x + w > bx0 - 24 && y < by1 + 24 && y + h > by0 - 24;
@@ -1999,7 +2040,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   fitMargin() { const rt = this.rightTaken(); return rt > 0 ? rt + FLOOR_RIGHT_GAP : (this.regionShown && !this.rightCollapsed && !this.demo?.() ? 64 : 0); }
   rightTaken() { const b = this.termBox; return b && !this.demo?.() ? Math.round(b.w) : 0; } // ★103-3 (2nd) the width the attached right window takes
   overColumn(at, pos) { const b = this.termBox; if (b && pos && pos.x >= b.x - 2 && pos.y >= b.y - 2) return true; return !!(this.panelLeft != null && at && at.x >= this.panelLeft); }
-  wheelZoom(dy, at, cx, pos) { if (this.overColumn(at, pos)) return; if (dy) this.zoomBy(Math.pow(1.0015, dy), at, cx); } // scrolling up (the device's positive distance) zooms in
+  wheelZoom(dy, at, cx, pos) { if (this.isMosses() || this.overColumn(at, pos)) return; if (dy) this.zoomBy(Math.pow(1.0015, dy), at, cx); } // scrolling up (the device's positive distance) zooms in
   // ★62-3 「全体を表示」: the whole floor inside the window. A native scene is drawn at k = z (1 = the pictures' own size), which can be taller than the window
   // (r36: the front edge and the 控室 sign went under the window's bottom), so the button zooms out just enough; never above 1 (the pictures are not blown up).
   zoomFit(cx) { const sc = this.scene, W = this.left?.width ?? 800, H = this.left?.height ?? 560, lw = this.panelOpen?.() && this.termPanel && !this.demo?.() ? this.panelWidth() : 0; this.zoomPan = sideFit(sc, W, H, fitZoom, lw, this.fitMargin()); cx.notify(); } // ★73-2: with the left list open, the width left of it
@@ -2008,7 +2049,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     // self-review #6: at the upper right, just under the band (at the lower right the App's own notices, e.g. "Restart", covered them); left of the side panel while it is open
     // 4th W6: the "＋" was still under the window by one button's width (r4 picture), so the buttons keep a margin (ZOOM_GAP) clear of the attached window's left edge
     const panelW = (this.panelLeft != null ? Math.max(0, left.width - this.panelLeft) : 0) + this.rightTaken() + (this.rightTaken() > 0 ? ZOOM_GAP : 0); // ★104 V3: the attached right window covers the floor's right edge too
-    return h_flex().id("zoom-controls").absolute().right(10 + panelW).top(8).h(24).gap(2).items_center().rounded(8).bg("#1b2637ee").border(1).border_color("#3b4b60")
+    return h_flex().id("zoom-controls").absolute().right(10 + panelW).top(8).h(24).gap(2).items_center().rounded(8).bg((P.paper + "ee")).border(1).border_color(P.line)
       .child(btn("zoom-out", "－", (cx) => this.zoomBy(1 / 1.25, null, cx))).child(btn("zoom-fit", "전체 보기", (cx) => this.zoomFit(cx), 84)).child(btn("zoom-in", "＋", (cx) => this.zoomBy(1.25, null, cx)));
   }
   // ★90 (H): small, under the zoom buttons: the App is holding a lot of pictures and a restart is the sure way to give it back.
@@ -2165,7 +2206,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const lines = Array.from({ length: 10 }, (_, i) => div().h(lh).flex_none().w(Math.max(2, w * k * jit(id, `l${i}`, 0.25, 0.9)))
       .ml(Math.round(w * k * 0.06 * (hash(id + i) % 3))).rounded(1).bg(["#7ee0b0", "#8fb4ff", "#e6e9f2"][hash(id + "c" + i) % 3]).opacity(0.85));
     const cursor = div().absolute().left(Math.max(2, w * k * 0.5)).top(Math.max(1, h * k * 0.7)).w(Math.max(2, w * k * 0.07)).h(lh)
-      .bg("#1b2637");
+      .bg(P.paper);
     return div().id(`screen-${id}`).absolute().left(ox + x * k).top(oy + y * k).w(w * k).h(h * k).overflow_hidden()
       .bg("#1f2638").rounded(1)
       .child(v_flex().absolute().left(Math.max(1, w * k * 0.06)).top(0).w(w * k).gap(lh * 0.5)
@@ -2253,7 +2294,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const pick = (...keys) => keys.find(has);
     const wait86 = l86WaitPose(!!this.scene?.l86); // ★101-8 the new floor: the sofa / nap picture is never used (see below)
     const moving = this.moving(p); // ★31-1: on the move (a transition is running) always wins: walk frames, never a still pose that slides
-    if (!moving) p.walkT0 = null;
+    if (!moving) { p.walkT0 = null; p.walkK0 = null; }
     if (moving) return this.walkPose(files, a.id, p); // available walking pictures first; a visible stand-in beats a blank frame
     if (seatlessWaiting(this.scene, a.id, p.at) && !(p.busy && Date.now() < p.busy)) { const k = pick("stand", "sit"); const v = k ? files[k] : null; return { key: k ?? "stand", frames: v ? (Array.isArray(v) ? [v[0]] : [v]) : [] }; } // ★102-7 no seat in the plan: only the plain standing picture (no raised hand, papers, sofa or nap), whatever the state
     if (p.standUntil && Date.now() < p.standUntil && !moving) return { key: "stand", frames: has("stand") ? [Array.isArray(files.stand) ? files.stand[0] : files.stand] : [] };
@@ -2353,6 +2394,9 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     // ★76 the talk "…" is drawn in the front layer of the tag loop (talkBubble), above the state mark
     // ★75-1 no ×N over the head
     // ★75-1 nothing over the head but the talk
+    // Atlas Code: the usual character plus a small Atlas emblem beside the head (the space above the head stays the state disc's)
+    if (/^atlas/i.test(String(a.app ?? ""))) { const bw = Math.max(12, sh * 0.2), hf = this.headFrac(id, a, p, sc);
+      sprite.child(image("mods/hansol/icons/atlas-badge.svg").id(`atlas-${id}`).absolute().left(sw / 2 + sh * 0.06).top(sh * (1 - hf) - bw * 0.2).w(bw).h(bw)); }
     return div().id(`person-${id}`).absolute().left(ox + pos[0] * k - sw / 2).top(oy + pos[1] * k - sh + (p.bowing && !(sc.people?.[id] ?? {}).bow ? Math.max(5, 7 * k) : 0)).w(sw).h(sh)
       .transition("left", { duration: dur, easing: "linear" }).transition("top", { duration: dur, easing: "linear" })
       .transition("opacity", { duration: 600, easing: "ease-in" }).opacity(p.fade ? 0 : 1) // the picture is never faded (only the tag is, for a long wait)
@@ -2447,9 +2491,9 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
   talkBubble(id, p, hx, hy, d, status = "working", dx = 0) {
     const talk = this.meetBubble?.(id, p); if (!talk) return null;
     const bw = this.talkW(talk), bh = talk.mine ? 22 : 16, dw = talk.mine ? 7 : 5, ts = talk.mine ? 11 : 8, bx = this.talkBox(talk, hx, hy, d, status, dx), name = this.talkName(talk);
-    const bubble = div().id(`talk-${id}`).absolute().left(bx.x).top(bx.y).w(bw).h(bh).flex().items_center().justify_center().gap(2).px(4).rounded(11).bg("#1b2637").border(1.5).border_color("#c9c2b2").opacity(talk.mine ? 1 : 0.6); // a talk picture (two speech balloons), who with, then three dots lit 1 -> 2 -> 3 in turn (★70-3)
+    const bubble = div().id(`talk-${id}`).absolute().left(bx.x).top(bx.y).w(bw).h(bh).flex().items_center().justify_center().gap(2).px(4).rounded(11).bg(P.paper).border(1.5).border_color("#c9c2b2").opacity(talk.mine ? 1 : 0.6); // a talk picture (two speech balloons), who with, then three dots lit 1 -> 2 -> 3 in turn (★70-3)
     bubble.child(div().flex_none().child(icon("talk", talk.mine ? 14 : 11, "#f2c66d")));
-    if (name) bubble.child(div().flex_none().text_size(10).font_weight(700).text_color("#e7edf6").whitespace_nowrap().child(name));
+    if (name) bubble.child(div().flex_none().text_size(10).font_weight(700).text_color(P.ink).whitespace_nowrap().child(name));
     if (talk.mine) for (const n of TALK_DOTS) bubble.child(div().id(`talk-${id}-${n}`).w(dw).h(bh - 4).flex().items_center().justify_center().text_size(ts).font_weight(800).text_color("#cad5e4").frames(talkDotFrames(n), TALK_DOT_MS));
     // ★101-7 a small tail under the middle pointing at the speaker's head (-dx: the tail stays on the head when the bubble stepped aside)
     bubble.child(div().absolute().left(bw / 2 - 5 - dx).top(bh - 6).w(10).h(7).flex().items_center().justify_center().text_size(9).font_weight(900).text_color("#c9c2b2").child("▾"));
@@ -2489,7 +2533,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
     const x = Math.max(6, Math.min(left.width - W - 6, r.x + r.w / 2 - W / 2));
     const y = r.y - H - 6 >= 4 ? r.y - H - 6 : r.y + r.h + 6;
     const frac = Math.min(1, mins / 60); // no progress data: the bar is the time in this state (full at an hour)
-    return v_flex().id("hover-card").absolute().left(x).top(y).w(W).h(H).p(10).gap(6).rounded(12).bg(P.paper).border(1).border_color("#3b4b60")
+    return v_flex().id("hover-card").absolute().left(x).top(y).w(W).h(H).p(10).gap(6).rounded(12).bg(P.paper).border(1).border_color(P.line)
       .on_hover((h, cx) => { this.cardIn = h; if (!h) this.hoverOver(a.id, false, cx); })
       .child(h_flex().gap(6).items_center().child(this.stateMark(st, 16))
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(700).text_color(P.ink).child(platform(a).name))
@@ -2499,7 +2543,7 @@ ${new Date().toISOString()} ${where}${where === "board" ? ` [last step: ${this._
       .child(v_flex().gap(3)
         .child(div().w_full().h(5).rounded(3).bg("#ece8dd").child(div().h_full().w(Math.max(4, (W - 20) * frac)).rounded(3).bg(st.color)))
         .child(div().text_size(10).text_color(P.muted).child(`${st.label}${a.unknown ? "?" : ""} ${mins}분`)))
-      .child(div().id("hover-open").w_full().h(26).flex().items_center().justify_center().rounded(8).bg("#1e6fe0").cursor_pointer()
+      .child(div().id("hover-open").w_full().h(26).flex().items_center().justify_center().rounded(8).bg(P.solid).cursor_pointer()
         .on_click((_e, cx) => { this.cardIn = false; this.hoverId = null; this.select(a, cx); })
         .child(div().text_size(11).font_weight(700).text_color("#ffffff").child("대화 열기")));
   }

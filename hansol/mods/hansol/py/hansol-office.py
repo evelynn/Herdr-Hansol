@@ -568,7 +568,7 @@ def dfs_order(members):
 
 
 FREE_PREFIX = 'free:'                                       # ★68-2: the island of the people in no space (the collector's island 'free:フリーデスク')
-FREE_KEY = FREE_PREFIX + 'フリーデスク'                       # ★72-1: the collector's FREE_ISLAND (its place is kept while nobody is in it)
+FREE_KEY = FREE_PREFIX + '공간 없음'                       # ★72-1: the collector's FREE_ISLAND (its place is kept while nobody is in it)
 
 
 def is_free(key):                                          # ★68-2: OFF until the free desk stops moving rooms (1 room / 4 rooms: rooms moved). Then: str(key).startswith(FREE_PREFIX)

@@ -20,10 +20,25 @@ from PIL import Image, ImageFilter
 import hansol_sprites as sp
 
 HERE = Path(__file__).resolve().parent
-SHEET_DIR = HERE / 'sheets' / 'guild-dark'
+THEMES = {'guild-dark': ('guild-dark', 'guild', 'guild_sheets'),       # a theme: (its sheets folder under sheets/, its
+          'guild-meadow': ('meadow', 'meadow', 'meadow_sheets')}       # app-home output folder, its config.json key)
+THEME = 'guild-dark'   # the theme worked from now: guild-dark at import, as it has always been
+SHEET_DIR = HERE / 'sheets' / THEMES[THEME][0]
 SPEC_FILE = SHEET_DIR / 'sheets.json'
 GAP = 2            # grow steps (4 px cells) when joining a piece's bits: pieces closer than ~16 px become one
 BG_TOLERANCE = 28  # a flat background: this far (RGB distance) from the corners' colour is still background
+
+
+def use(theme):
+    """Set the theme this module works from: every folder it uses alone (the sheets folder, the app-home output
+    folders of the checked and the cut pieces) takes the theme's value again. Import time is guild-dark."""
+    global THEME, SHEET_DIR, SPEC_FILE, CHECK_CACHE, CUT_DIR
+    THEME = theme
+    sheets_dir, out, _ = THEMES[theme]
+    SHEET_DIR = HERE / 'sheets' / sheets_dir
+    SPEC_FILE = SHEET_DIR / 'sheets.json'
+    CHECK_CACHE = sp.APP_HOME / 'hansol-office' / out / 'check-cache.json'
+    CUT_DIR = sp.APP_HOME / 'hansol-office' / out / 'cut'
 
 
 def spec():
@@ -31,9 +46,43 @@ def spec():
 
 
 def sheet_dir():
-    """config.json office.guild_sheets (a folder) overrides the bundled folder (like office.sheets for the office)."""
-    given = sp.office_settings().get('guild_sheets')
+    """config.json office.guild_sheets / meadow_sheets (the theme's key, a folder) overrides the bundled folder."""
+    given = sp.office_settings().get(THEMES[THEME][2])
     return Path(given).expanduser() if isinstance(given, str) and given else SHEET_DIR
+
+
+def source(entry, folder=None):
+    """(Path, recolor) of a sheet's PNG: the theme's own folder first (a sheet drawn for this theme wins); a sheet
+    that is missing comes from the spec's fallback folder, recolored when the spec says so and the sheet is not one
+    of the people sheets (a class sheet: the people as they are); no fallback: the theme's own path, missing as it is."""
+    folder = sheet_dir() if folder is None else folder
+    own = folder / entry['file']
+    if own.is_file():
+        return own, False
+    s = spec()
+    fb = s.get('fallback')
+    if isinstance(fb, str) and fb:
+        return HERE / 'sheets' / fb / entry['file'], bool(s.get('recolor')) and not entry.get('class')
+    return own, False
+
+
+def brighten(img):
+    """A dark sheet turned bright pastel (the meadow's recolor): the value lifted (V' = 0.45 + 0.55 * V ** 0.7, so
+    nothing stays really dark), the saturation softened (S' = S * 0.8), the hue kept; pure white stays pure white.
+    RGBA: the alpha is untouched."""
+    a = np.array(img.convert('RGBA'))
+    hsv = np.array(Image.fromarray(a[..., :3], 'RGB').convert('HSV')).astype(np.float32)
+    hsv[..., 2] = np.clip(255 * (0.45 + 0.55 * (hsv[..., 2] / 255) ** 0.7), 0, 255)
+    hsv[..., 1] = np.clip(hsv[..., 1] * 0.8, 0, 255)
+    out = np.array(Image.fromarray(hsv.astype(np.uint8), 'HSV').convert('RGB'))
+    out[(a[..., :3] == 255).all(axis=2)] = 255
+    a[..., :3] = out
+    return Image.fromarray(a, 'RGBA')
+
+
+def open_sheet(path, recolor):
+    """A sheet's PNG as RGBA, brightened right away when it comes recolored from a fallback folder."""
+    return brighten(Image.open(path)) if recolor else Image.open(path).convert('RGBA')
 
 
 def alpha_of(img):
@@ -74,12 +123,12 @@ def check_sheet(entry, folder):
     want = [len(r) for r in entry['rows']]
     out = {'key': entry['key'], 'file': entry['file'], 'expected': sum(want), 'rows_expected': want,
            'found': 0, 'rows_found': [], 'ok': False, 'problem': None}
-    path = folder / entry['file']
+    path, recolor = source(entry, folder)
     if not path.is_file():
         out['problem'] = 'missing'
         return out
     try:
-        rows = piece_rows(alpha_of(Image.open(path)))
+        rows = piece_rows(alpha_of(open_sheet(path, recolor)))
     except (OSError, ValueError) as e:
         out['problem'] = f'unreadable: {e}'
         return out
@@ -99,8 +148,9 @@ CHECK_CACHE = sp.APP_HOME / 'hansol-office' / 'guild' / 'check-cache.json'
 
 def _file_sig(entry, folder):
     try:
-        st = (folder / entry['file']).stat()
-        return f"{st.st_size}-{int(st.st_mtime)}-{hashlib.sha1(json.dumps(entry['rows']).encode()).hexdigest()[:6]}"
+        p, recolor = source(entry, folder)
+        st = p.stat()
+        return f"{st.st_size}-{int(st.st_mtime)}-{hashlib.sha1(json.dumps(entry['rows']).encode()).hexdigest()[:6]}{'-r' if recolor else ''}"
     except OSError:
         return '-'
 
@@ -152,10 +202,10 @@ def sheets_signature(folder=None):
     folder = folder or sheet_dir()
     parts = []
     for e in spec()['sheets'] + [{'file': 'sheets.json'}]:
-        p = (folder if e['file'] != 'sheets.json' else SHEET_DIR) / e['file']
+        p, recolor = (SHEET_DIR / 'sheets.json', False) if e['file'] == 'sheets.json' else source(e, folder)
         try:
             st = p.stat()
-            parts.append(f"{e['file']}:{st.st_size}:{int(st.st_mtime)}")
+            parts.append(f"{e['file']}:{st.st_size}:{int(st.st_mtime)}{'-r' if recolor else ''}")
         except OSError:
             parts.append(f"{e['file']}:-")
     return hashlib.sha1('|'.join(parts).encode()).hexdigest()[:12]
@@ -167,12 +217,12 @@ CUT_VERSION = 2   # raise when the cutting changes: the pieces are cut again (2:
 
 def cut_sheet(entry, folder=None):
     """{piece name: RGBA image cropped to its own pixels} (names from sheets.json, in reading order).
-    Kept in guild/cut/<sheet>-<size>-<mtime>-<rows>/ (finding the pieces of a big sheet takes seconds): a changed sheet is cut again
+    Kept in the theme's own cut/<sheet>-<size>-<mtime>-<rows>/ (finding the pieces of a big sheet takes seconds): a changed sheet is cut again
     and its older cut folder goes."""
-    path = (folder or sheet_dir()) / entry['file']
+    path, recolor = source(entry, folder)
     st = path.stat()
     stem = Path(entry['file']).stem
-    key = f"{stem}-{st.st_size}-{int(st.st_mtime)}-{hashlib.sha1(json.dumps([entry['rows'], CUT_VERSION]).encode()).hexdigest()[:6]}"
+    key = f"{stem}-{st.st_size}-{int(st.st_mtime)}-{hashlib.sha1((json.dumps([entry['rows'], CUT_VERSION]) + ('-r' if recolor else '')).encode()).hexdigest()[:6]}"
     d = CUT_DIR / key
     names = [n for r in entry['rows'] for n in r]
     if all((d / f'{n}.png').is_file() for n in names):
@@ -181,7 +231,7 @@ def cut_sheet(entry, folder=None):
             with Image.open(d / f'{n}.png') as im:
                 out[n] = im.convert('RGBA')
         return out
-    out = _cut_sheet(entry, path)
+    out = _cut_sheet(entry, path, recolor)
     if len(out) == len(names):
         try:
             d.mkdir(parents=True, exist_ok=True)
@@ -216,8 +266,8 @@ def _owners(alpha):
     return px, ids
 
 
-def _cut_sheet(entry, path):
-    img = Image.open(path).convert('RGBA')
+def _cut_sheet(entry, path, recolor=False):
+    img = open_sheet(path, recolor)
     a = alpha_of(img)
     owner, ids = _owners(a)
     if (np.array(img)[..., 3] < 250).mean() <= 0.05:          # a flat background: the corners' colour becomes transparent

@@ -4,13 +4,13 @@
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
 import { closeOverlay, hc, openOverlay, props, setShared, settings, shared, spaces } from "herdr";
-import { P, dot, ago, STATE, platform, platformIcon, stateOf, fmtMem, blockedText } from "./common.js";
+import { RAD, P, dot, ago, STATE, platform, platformIcon, stateOf, fmtMem, blockedText } from "./common.js";
 import { commanderInfo, unwrapHcScreen } from "./life.js";
 import { isWorker, teamFixPlan, teamSpaceState } from "./actions.js";
 import { iconBtn, tabs, menuList, inlineRename, renameState } from "./ui.js";
 import { fitChips, headBodyH, foldScreenHead, RIGHT_HEAD, UI, NAME_EM, clipName } from "./ui-rules.js";
 import { tidyCut } from "./ui-rules.js";
-import { approvalPlan, answerApproval, stripApprovalDialog, REASON_TEXT, liveState, seenNext, askInRecord, clampAsk, dropWhatTip, inboxWhat } from "./approve.js";
+import { approvalPlan, answerOnce, stripApprovalDialog, REASON_TEXT, liveState, seenNext, askInRecord, clampAsk, dropWhatTip, inboxWhat } from "./approve.js";
 import { answeredPlan, readSeenNext, needsApprovalRead, planIsAsk } from "./approve.js"; // 42nd 40-H1 (separate line: test-life reads the line above)
 import { rereadDue, screenBodyMode, composerStandIn } from "./approve.js"; // 43rd office-fix48a (separate line, as above)
 import { approvalLoading, answeredNow } from "./approve.js"; // 44th office-fix49a (separate line, as above)
@@ -22,7 +22,7 @@ const APPROVE_HINT = "#c1cddd";
 // ★103-4: every press target of the head is BTN px or more (32px minimum) and the text is 1.25-1.5x the old size.
 const BTN = 36, BICON = 20;
 const FROM_NAME = "#a3aab4"; // 25th R5: the parent's name beside 「（親から）」 (paler than P.muted)
-const TOOL_BG = "#202c3e", TOOL_BORDER = "#3b4b60"; // 22nd N7: a tool record's pale fill and thin frame (chat.js uses the same two for the transcript's tool row)
+const TOOL = { get bg() { return P.white; }, get border() { return P.line; } }; // 22nd N7: a tool record's pale fill and thin frame (chat.js uses the same two for the transcript's tool row)
 const PEND_EXTRA = 44; // 27th T1: the pinned record's label + frame + gap (px), taken off the fit's height (its lines are counted by the fit)
 const PEND_BG = "#453527", PEND_BORDER = "#a87a42", PEND_TEXT = "#ffd19a"; // 26th S2: the record being asked about = the approval card's own colours (the earlier records stay pale)
 const END_BORDER ="#f0d2d8", END_GAP = 14; // 22nd N3: the pale frame of 「終える」 and the extra space between it and 「窓をたたむ」「×」 (6 of the row's gap + 14 = 20 px)
@@ -82,19 +82,19 @@ export class DetailPart {
     const project = a.cwd ? String(a.cwd).split(/[\\/]/).filter(Boolean).pop() : null;
     const info = [a.source === "app" ? "Herdr App" : (platform(a).name), project, a.mem_bytes != null ? fmtMem(a.mem_bytes) : null].filter(Boolean).join(" · ");
     // ★104 U1: only a pill that can be pressed (the parent) has a frame (and the hand cursor, below); the others are plain text (same width: the plan counts the padding).
-    const pill = (...k) => h_flex().min_w(0).overflow_hidden().whitespace_nowrap().gap(6).px(10).py(4).items_center().rounded(8).text_size(14).text_color(P.ink).children(k);
-    const pressPill = (...k) => pill(...k).border(1).border_color(P.line).bg("#253449").hover((s) => s.bg("#314259"));
+    const pill = (...k) => h_flex().min_w(0).overflow_hidden().whitespace_nowrap().gap(6).px(10).py(4).items_center().rounded(RAD(8)).text_size(14).text_color(P.ink).children(k);
+    const pressPill = (...k) => pill(...k).border(1).border_color(P.line).bg(P.hover).hover((s) => s.bg(P.press));
     const nameRow = h_flex().gap(6).items_center().min_w(0)
       .child(renaming ? inlineRename("rename", renaming.state, (cx) => this.doRename(a, cx), (cx) => { this.renaming = null; cx.notify(); }, 20)
         : div().min_w(0).flex_1().h(30).overflow_hidden().truncate().text_size(22).font_weight(700).text_color(P.ink).child(String(a.name || a.address || "")))   // ★88-6 the whole name, up to two lines beside the face (was cut at the width)
       .when(!!renaming, (e) => e.child(div().flex_1()))
       // ★97 a split team: the press that puts it in one room (★101-4: not inside a "⋯" menu any more)
-      .when(!renaming && !!mergeItem, (e) => e.child(div().id("merge-btn").flex_none().h(BTN).px(10).flex().items_center().rounded(8).bg("#493a24").text_size(14).font_weight(700).text_color("#f4ce76")
+      .when(!renaming && !!mergeItem, (e) => e.child(div().id("merge-btn").flex_none().h(BTN).px(10).flex().items_center().rounded(RAD(8)).bg("#493a24").text_size(14).font_weight(700).text_color("#f4ce76")
         .cursor_pointer().hover((s) => s.bg("#fbeccb")).on_click((_e, cx) => { cx.stop_propagation(); this.menuFor = null; mergeItem.fn(cx); }).child("모으기")))
       // ★101-4 the pencil (rename) and the trash (end this session, asked first) stand where the "⋯" was
       // ★105 (codex_3, decision 2): "終える" is a red-framed button with a label (the trash icon + text); the confirm dialog stays (askEnd)
       .when(!renaming && canRename, (e) => e.child(iconBtn("rename-btn", "pencil", (cx) => { this.startRename(a); cx.notify(); }, { size: BTN, isize: BICON }))
-        .child(h_flex().id("end-btn").tooltip("터미널 세션을 종료합니다. 확인 후 진행하며 작업 중인 내용은 중단되고 되돌릴 수 없습니다").flex_none().h(BTN).px(10).gap(6).items_center().rounded(8).border(1).border_color(END_BORDER).bg("#1b2637").cursor_pointer() // 22nd N3: a pale frame (the red text and icon stay: it is the dangerous one), and a gap before the fold / close buttons
+        .child(h_flex().id("end-btn").tooltip("터미널 세션을 종료합니다. 확인 후 진행하며 작업 중인 내용은 중단되고 되돌릴 수 없습니다").flex_none().h(BTN).px(10).gap(6).items_center().rounded(RAD(8)).border(1).border_color(END_BORDER).bg(P.paper).cursor_pointer() // 22nd N3: a pale frame (the red text and icon stay: it is the dangerous one), and a gap before the fold / close buttons
           .hover((s) => s.bg("#472c36")).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.askEnd(a, list); })
           .child(icon("trash", 16, "#d6455d")).child(div().text_size(14).font_weight(700).text_color("#d6455d").child("종료")))
         .child(div().id("end-gap").flex_none().w(END_GAP)))
@@ -246,7 +246,7 @@ export class DetailPart {
     this.apprs.set(a.id, { ...(e ?? { key: `${a.id}|${a.since}`, plan: null }), busy: true, result: null }); cx.notify();
     cx.spawn(async (cx) => {
       let res;
-      try { res = await answerApproval({ hc, sleep: (ms) => cx.sleep(ms) }, a.address, want); } catch (err) { res = { ok: false, reason: "send-failed", detail: String(err?.message ?? err) }; }
+      try { res = await answerOnce({ hc, sleep: (ms) => cx.sleep(ms) }, { get: () => shared("hansol.mzAnswered"), set: (all) => setShared("hansol.mzAnswered", all) }, a.address, want); } catch (err) { res = { ok: false, reason: "send-failed", detail: String(err?.message ?? err) }; } // 2026-11-26 one answer across the cards, the MOSSES floor and the terminal window's head
       if (res.ok) this.apCache(a, null);
       if (res.ok) { try { const prev = shared("hansol.seenstate") ?? {}, n = seenNext({ ...a, status: "working" }, prev[a.id]); if (n) setShared("hansol.seenstate", { ...prev, [a.id]: n }); } catch {} } // 38th 36-D2: an answer that moved the state hides the card in every copy at once
       const cur = this.apprs.get(a.id) ?? {};
@@ -267,7 +267,7 @@ export class DetailPart {
     if (e?.answered) return null; // 42nd 40-H1: answered in the terminal, the state is not caught up: nothing to ask (no 「端末で答えてください」, which is only for a dialog that was never readable)
     const note = e?.result && Date.now() - e.result.at < 8000 ? e.result : null;
     const noteView = note ? div().text_size(13).text_color(note.ok ? "#2f9e6f" : "#d6455d").child(note.text) : null;
-    const btn = (key, label, ic, fn, fill) => h_flex().id(`${id}-${key}-${a.id}`).flex_1().h(h).gap(6).items_center().justify_center().rounded(8).border(1).border_color(fill ? P.blue : P.line).bg(fill ? "#1e6fe0" : P.paper)
+    const btn = (key, label, ic, fn, fill) => h_flex().id(`${id}-${key}-${a.id}`).flex_1().h(h).gap(6).items_center().justify_center().rounded(RAD(8)).border(1).border_color(fill ? P.blue : P.line).bg(fill ? P.solid : P.paper)
       .cursor_pointer().hover((s) => s.opacity(0.88)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); })
       .child(icon(ic, 18, fill ? "#ffffff" : P.ink)).child(div().text_size(17).font_weight(700).text_color(fill ? "#ffffff" : P.ink).child(label));
     if (e?.busy) return v_flex().gap(4).child(div().text_size(14).text_color(P.muted).child("전송 중…"));
@@ -315,7 +315,7 @@ export class DetailPart {
     const cardW =Number((shared("hansol.apmeasure") ?? {}).card?.w) || 0, askFull = askLine(blockedText(a), inboxWhat(this.approvalEntry(a))), askClamp = clampAsk(askFull, cardW, 2); // 39th 37-E1: the paragraph is at most 2 lines (buttons always fit); the whole text is the tooltip
     const headed = !this.pendingRecordShown(a), dupAsk = askInRecord(blockedText(a), this.pendingRecordText(a)); // 38th 36-D3: hc's "approve PowerShell: <command>" paragraph is left out when the orange record shows that command (the buttons are unchanged)
     return v_flex().id("approval-ask-wrap").flex_none().px(14) // 34th 33-A2: no pt: with the orange record above (headed = false) the card starts at its bottom edge (one card); chat.js APPROVE_TOP = 0
-      .child(v_flex().id("approval-ask").gap(6).px(12).py(10).bg("#453527").border(1).border_color("#a87a42").on_size_change(this.apMeasure("card")).when(headed, (x) => x.rounded(10)).when(!headed, (x) => x.rounded_b(10))
+      .child(v_flex().id("approval-ask").gap(6).px(12).py(10).bg("#453527").border(1).border_color("#a87a42").on_size_change(this.apMeasure("card")).when(headed, (x) => x.rounded(RAD(10))).when(!headed, (x) => x.rounded_b(10))
         .when(headed, (x) => x.child(h_flex().id("approval-heading").gap(6).items_center().on_size_change(this.apMeasure("heading")).child(dot(STATE.blocked.color, 10)).child(div().text_size(14).font_weight(700).text_color("#ffd19a").child("승인 대기 중"))))
         .when(!!this.approvalEntry(a)?.detail, (x) => x.child(v_flex().id("approval-what").gap(2).on_size_change(this.apMeasure("what")).children((this.approvalEntry(a).detail ?? []).map((t, i) => { const w1 = dropWhatTip(t), c1 = clampAsk(w1, cardW, 1); return div().id(`approval-what-${i}`).min_w(0).text_size(15).font_weight(i === 0 ? 700 : 400).text_color(P.ink).font_family(settings().font_family ?? "Consolas").tooltip(w1).child(c1.text); })))) // 39th 37-E4: no "· Tip: ..." after the first line; 37-E1: each line is at most one line (the reserved two), the whole text is the tooltip
         .when(askLine(blockedText(a), inboxWhat(this.approvalEntry(a))) !== "" && !dupAsk, (x) => x.child(div().id("approval-ask-line").text_size(16).text_color(P.ink).on_size_change(this.apMeasure("askline")).tooltip(askFull).child(askClamp.text))) // 27th T2: not again what the heading says; a path only as its file name
@@ -356,16 +356,16 @@ export class DetailPart {
       const elapsed = Math.max(0, Math.min(30, Math.floor((Date.now() - (this.chat?.at ?? Date.now())) / 1000))); // 34th 34-B7: seconds since the screen was read; the spinner row's seconds = the last read + that
       const allBlocks = (sd.cut ? markPending(splitToolBlocks(sf.text)) : splitToolBlocks(sf.text)).map((b) => b.kind === "work" && elapsed > 0 ? { ...b, text: advanceWork(b.text, elapsed) } : b);
       body = v_flex().p(12).gap(2).on_size_change(this.apMeasure("conv-body")).when(a?.status === "blocked" && sf.hidden > 0, (e) => e.min_h_full().justify_end()) // 38th 36-D4: only a conversation that is folded (older lines hidden) sits at the bottom; one that fits starts at the top (no blank above it) // 37th 35-C2: while the card waits the lines sit at the bottom of the scroll (right above the record / card), so the room the estimate leaves over is above them, not between the record and the card; conv-body / conv-frame (approve-measure-*.json) = the real heights, to compare after install // 32nd 31-Y7: the rows (instruction / record / reply / 完了) are closer (gap 6 -> 2; the tool record's py 4 -> 2); text sizes unchanged; the fit's estimates (SCREEN) are on the safe side, so only more room is left
-        .when(showHead,(e) => e.child(h_flex().id("screen-head-toggle").flex_none().h(UI.hit).px(10).gap(6).items_center().rounded(8).bg("#253449").cursor_pointer().hover((s) => s.bg("#314259"))
+        .when(showHead,(e) => e.child(h_flex().id("screen-head-toggle").flex_none().h(UI.hit).px(10).gap(6).items_center().rounded(RAD(8)).bg(P.hover).cursor_pointer().hover((s) => s.bg(P.press))
           .on_click((_e, cx) => { cx.stop_propagation(); this.screenHeadOpen = !open; cx.notify(); })
           .child(icon(open ? "down" : "right", 14, P.muted)).child(div().text_size(14).text_color(P.muted).child(open ? "시작 화면 접기" : `시작 안내 ${f.n}줄이 접혀 있습니다. 누르면 펼칩니다`))))
         .when(showHead && open, (e) => e.child(mono(f.head)))
-        .when(sf.hidden > 0, (e) => e.child(h_flex().id("chat-older").flex_none().h(UI.hit).px(12).gap(6).items_center().rounded(8).bg("#253449").cursor_pointer().hover((s) => s.bg("#314259")) // 25th R1: the screen copy shows its newest lines (a press goes back one more screen)
+        .when(sf.hidden > 0, (e) => e.child(h_flex().id("chat-older").flex_none().h(UI.hit).px(12).gap(6).items_center().rounded(RAD(8)).bg(P.hover).cursor_pointer().hover((s) => s.bg(P.press)) // 25th R1: the screen copy shows its newest lines (a press goes back one more screen)
           .on_click((_e, cx) => { cx.stop_propagation(); this.convBackMore(a?.id ?? p.id); cx.notify(); })
           .tooltip(`이전 대화 보기 (위에 ${sf.hidden}줄)`)
           .child(div().text_size(14).font_weight(700).text_color(P.muted).child("↑ 이전 대화 보기"))))
         .when(!sd.cut || String(f.n > 0 ? f.rest : sd.text).trim() !== "", (e) => e.children(allBlocks.flatMap((blk, i) => blk.pending ? [] : [blk.kind === "tool" // 22nd N7: a tool record (Searched… / Write(…) and its ⎿ lines) in a pale thin frame, apart from what was said
-          ? div().id(`screen-tool-${i}`).w_full().px(8).py(1).rounded(6).border(1).border_color(TOOL_BORDER).bg(TOOL_BG).text_size(16).text_color(P.muted).font_family(settings().font_family ?? "Consolas").tooltip(String(blk.text).trim()).child(toolMark(blk.text) ? h_flex().id(`screen-tool-row-${i}`).gap(6).child(div().id(`screen-tool-mark-${i}`).flex_none().text_size(16).font_weight(700).text_color(toolMark(blk.text) === "ok" ? STATE.done.color : "#d6455d").child(toolMark(blk.text) === "ok" ? "✓" : "✕")).child(div().min_w(0).child(toolLabel(blk.text))) : toolLabel(blk.text)) // 34th 33-A7: a small ✓ (created / edited) or ✕ (rejected) in front // 31st 30-X5: a known search / read record reads in Japanese (the original is the tooltip)
+          ? div().id(`screen-tool-${i}`).w_full().px(8).py(1).rounded(RAD(6)).border(1).border_color(TOOL.border).bg(TOOL.bg).text_size(16).text_color(P.muted).font_family(settings().font_family ?? "Consolas").tooltip(String(blk.text).trim()).child(toolMark(blk.text) ? h_flex().id(`screen-tool-row-${i}`).gap(6).child(div().id(`screen-tool-mark-${i}`).flex_none().text_size(16).font_weight(700).text_color(toolMark(blk.text) === "ok" ? STATE.done.color : "#d6455d").child(toolMark(blk.text) === "ok" ? "✓" : "✕")).child(div().min_w(0).child(toolLabel(blk.text))) : toolLabel(blk.text)) // 34th 33-A7: a small ✓ (created / edited) or ✕ (rejected) in front // 31st 30-X5: a known search / read record reads in Japanese (the original is the tooltip)
           : blk.kind === "work" ? div().id(`screen-work-${i}`).w_full().text_size(16).text_color(P.muted).font_family(settings().font_family ?? "Consolas").child(workLabel(blk.text)) // 34th 33-A1: the spinner line "Frolicking… (3s · …)" -> 「作業中…（3秒）」
           : blk.kind === "end" ? div().id(`screen-end-${i}`).w_full().h(20).text_size(16).text_color(P.muted).font_family(settings().font_family ?? "Consolas").child(div().id(`screen-end-text-${i}`).on_size_change(this.apMeasure("end-text")).child(endLabel(blk.text, endRejected(allBlocks, i)))) // 34th 33-A7: after a 「却下しました」 record it reads 「却下で終了（3秒）」 // 23rd P4: the turn-end line in a pale text // 30th 29-W5: a known form ("✻ Churned for 3s · done 6:35") reads 「完了（3秒）」, an unknown one stays
           : blk.kind === "from" ? h_flex().id(`screen-from-${i}`).w_full().gap(8).items_center().text_size(blk.again ? 12 : 16).text_color(P.muted).font_family(settings().font_family ?? "Consolas").tooltip(String(blk.title)).child(String(blk.label)).when(!!blk.name, (e) => e.child(div().id(`screen-from-name-${i}`).text_size(12).text_color(FROM_NAME).child(String(blk.name)))) // 25th R5: the parent's name beside it in pale small text // 23rd P5: 「（親から）」; the address and name are the tooltip
@@ -377,7 +377,7 @@ export class DetailPart {
       const ansA = props()?.role === "chat-body" && a?.status === "blocked" ? (shared("hansol.apanswered") ?? {})[a.id] : null, answeredDialog = !!ansA && ansA.key === `${a.id}|${a.since}` && (ansA.at ?? 0) > (this.chatDataFrom ?? 0); // 42nd 40-H1: the card copy read a screen without the dialog after it had read the options = answered; this copy's screen (read before that) still ends with the dialog, so its orange record is old too
       if (answeredDialog) body = body.child(div().id("answered-working").w_full().text_size(16).text_color(P.muted).font_family(settings().font_family ?? "Consolas").child("작업 중…")); // 44th 42-J5: right after an answer the working line comes first (the screen read before it still ends with the dialog)
       if (sd.cut && !a?.stale && !staleDialog && !answeredDialog) pin = v_flex().id("screen-pin").flex_none().px(joined ? 14 : 12).pb(joined ? 0 : 6).gap(6).bg(P.paper)
-        .when(!!pe, (e) => e.child(v_flex().id("screen-tool-pending").w_full().gap(2).px(joined ? 12 : 8).py(4).on_size_change(this.apMeasure("record")).bg(PEND_BG).border(1).border_color(PEND_BORDER).when(joined, (x) => x.rounded_t(10).border_b(0)).when(!joined, (x) => x.rounded(6)).child(div().text_size(12).font_weight(700).text_color(PEND_TEXT).child("승인 대기")).child(div().text_size(16).text_color(P.ink).font_family(settings().font_family ?? "Consolas").child(String(pe.text))))) // 26th S2: the open question
+        .when(!!pe, (e) => e.child(v_flex().id("screen-tool-pending").w_full().gap(2).px(joined ? 12 : 8).py(4).on_size_change(this.apMeasure("record")).bg(PEND_BG).border(1).border_color(PEND_BORDER).when(joined, (x) => x.rounded_t(10).border_b(0)).when(!joined, (x) => x.rounded(RAD(6))).child(div().text_size(12).font_weight(700).text_color(PEND_TEXT).child("승인 대기")).child(div().text_size(16).text_color(P.ink).font_family(settings().font_family ?? "Consolas").child(String(pe.text))))) // 26th S2: the open question
         .when(!(a?.status === "blocked" && !!pe) && a?.status !== "blocked", (e) => e.child(div().id("approve-dialog-note").flex_none().text_size(14).text_color(P.muted).child(a?.status === "blocked" ? "↓ 아래 카드에서 답변하세요" : "승인을 기다리고 있습니다"))); // 31st 30-X1: with the orange 「承認待ち」 heading (pe) and the card there (blocked) the line is not drawn; the switch-over seconds keep 「승인을 기다리고 있습니다」 // 30th 29-W1: the card is not there until the state is "blocked" // 18th F2: the dialog is cut (the card below asks the same); a pale line says where to answer
     }
     else {
@@ -390,7 +390,7 @@ export class DetailPart {
       const fit = this.fitConv(msgs, a ?? { id: p.id }), els = this.messageList(fit.msgs, a ? plat.name : (p.name || "에이전트"), a?.status), last = msgs[msgs.length - 1];
       tail = this.tailScroll(els, `${p.id ?? ""}`, `${msgs.length}|${String(last?.text ?? "").length}|${a?.status ?? ""}`);
       if (!tail) body = v_flex().min_h_full().gap(8).px(14).py(8)
-        .when(fit.hidden > 0, (e) => e.child(h_flex().id("chat-older").flex_none().h(UI.hit).px(12).gap(6).items_center().rounded(8).bg("#253449").cursor_pointer().hover((s) => s.bg("#314259"))
+        .when(fit.hidden > 0, (e) => e.child(h_flex().id("chat-older").flex_none().h(UI.hit).px(12).gap(6).items_center().rounded(RAD(8)).bg(P.hover).cursor_pointer().hover((s) => s.bg(P.press))
           .on_click((_e, cx) => { cx.stop_propagation(); this.convBackMore(a?.id ?? p.id); cx.notify(); })
           .child(div().text_size(14).font_weight(700).text_color(P.muted).child(`↑ 이전 대화 보기 (${fit.hidden}건)`))))
         .children(els);
@@ -439,10 +439,10 @@ export class DetailPart {
     };
     return v_flex().id("composer").flex_none().gap(8).px(14).pt(6).pb(12)
       .when(waiting, (x) => x.child(div().id("composer-hint").min_w(0).truncate().text_color(APPROVE_HINT).text_size(13).child("거부 후 이유를 입력해 전송하면 다음 지시로 전달됩니다")))
-      .child(h_flex().id("composer-box").w_full().gap(8).items_center().px(8).py(6).rounded(10).border(1).border_color(P.line).bg("#1b2637")
+      .child(h_flex().id("composer-box").w_full().gap(8).items_center().px(8).py(6).rounded(RAD(10)).border(1).border_color(P.line).bg(P.paper)
         .on_key_down((e, cx) => { if (e.key === "enter") { send(cx); cx.stop_propagation(); } })
         .child(div().flex_1().min_w(0).text_size(17).child(st ? Input.new(st) : div()))
-        .child(h_flex().id("composer-send").flex_none().h(40).px(12).gap(6).items_center().rounded(8).bg("#1e6fe0").cursor_pointer().hover((s) => s.opacity(0.88))
+        .child(h_flex().id("composer-send").flex_none().h(40).px(12).gap(6).items_center().rounded(RAD(8)).bg(P.solid).cursor_pointer().hover((s) => s.opacity(0.88))
           .on_click((_e, cx) => { cx.stop_propagation(); send(cx); }).child(icon("play", 14, "#ffffff")).child(div().text_size(14).font_weight(700).text_color("#ffffff").child("전송"))));
   }
 
@@ -453,7 +453,7 @@ export class DetailPart {
     const rows = this.familyRows(a, list), pick = (n) => setShared("hansol.pick", { state: n.status, id: n.id, at: Date.now() });
     return v_flex().id("tree-body-root").size_full().bg(P.paper).p(10).gap(2).overflow_y_scrollbar()
       .children(rows.map(([n, depth]) => { const ks = stateOf(n), me = n.id === a.id;
-        return h_flex().id(`tree-${n.id}`).gap(6).px(8).py(8).items_center().rounded(7).cursor_pointer().hover((e) => e.bg("#2b3b50")).when(me, (e) => e.bg("#243d5d"))
+        return h_flex().id(`tree-${n.id}`).gap(6).px(8).py(8).items_center().rounded(RAD(7)).cursor_pointer().hover((e) => e.bg(P.raised)).when(me, (e) => e.bg(P.select))
           .on_click(() => pick(n))
           .child(div().flex_none().w(depth * 14)).child(div().flex_none().w(10).text_size(10).text_color(P.muted).child(depth ? "└" : ""))
           .child(dot(ks.color, 10)).child(platformIcon(n, 15))

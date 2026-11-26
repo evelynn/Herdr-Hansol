@@ -6,7 +6,7 @@ import { appHome, closeOverlay, exec, openOverlay, props, readTextFile, run, set
 // code fell back to left.width+268 (= 2188 wide): the right window was asked for x=1313 w=875, i.e. 268px past the screen edge (bubbles / the send button cut at x=1920). Never import `window` from "herdr" here.
 const vpSize = () => { try { const v = globalThis.window?.viewport_size?.(); return v && v.width > 0 ? v : null; } catch { return null; } };
 const winBounds = () => { try { const b = globalThis.window?.bounds?.(); return b && b.width > 0 ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null; } catch { return null; } };
-import { rightOverlayBox, RIGHT_EDGE, RIGHT_COLLAPSED_W, RIGHT_WIN_FRAME, STATE, ROOM, P, dot, chip, badge, clock, ago, platform, platformIcon, stateOf, blockedText } from "./common.js";
+import { RAD, rightOverlayBox, RIGHT_EDGE, RIGHT_COLLAPSED_W, RIGHT_WIN_FRAME, STATE, ROOM, P, dot, chip, badge, clock, ago, platform, platformIcon, stateOf, blockedText } from "./common.js";
 import { fitTail, unwrapHc } from "./life.js";
 import { tabFor } from "./detail.js";
 import { headHeight } from "./ui-rules.js";
@@ -182,9 +182,9 @@ export class ChatPart {
 
   chatView() {
     const p = props(), d = this.chat?.data, room = ROOM[p.source] ?? { title: p.source, color: P.muted };
-    const btn = (id, label, fn) => div().id(id).flex_none().px(9).py(4).rounded(5).border(1).border_color(P.line)
-      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click(fn).child(label);
-    const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg("#1b2637").border_b(1).border_color(P.line)
+    const btn = (id, label, fn) => div().id(id).flex_none().px(9).py(4).rounded(RAD(5)).border(1).border_color(P.line)
+      .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg(P.raised)).on_click(fn).child(label);
+    const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg(P.paper).border_b(1).border_color(P.line)
       .child(badge(room.title, room.color, true))
       .child(platformIcon(p, 14))
       .child(v_flex().flex_1().min_w(0)
@@ -198,14 +198,14 @@ export class ChatPart {
     let rows;
     if (this.chat?.loading && !d) rows = [div().p(16).text_size(12).text_color(P.muted).child("불러오는 중…")];
     else if (d?.error && !(d.messages?.length || d.screen)) rows = [div().p(16).text_size(12).text_color("#d6455d").child(String(d.error ?? ""))];
-    else if (d?.kind === "screen") rows = screen.split(/\r?\n/).map((line) => { const kind = screenLineKind(line); return div().w_full().px(12).text_size(12).font_family(settings().font_family ?? "Consolas").text_color(kind === "request" ? "#9bc9ff" : kind === "action" ? "#69d5c7" : P.ink).when(kind !== "text", (el) => el.font_weight(700).bg("#253449")).child(line || " "); });
+    else if (d?.kind === "screen") rows = screen.split(/\r?\n/).map((line) => { const kind = screenLineKind(line); return div().w_full().px(12).text_size(12).font_family(settings().font_family ?? "Consolas").text_color(kind === "request" ? "#9bc9ff" : kind === "action" ? "#69d5c7" : P.ink).when(kind !== "text", (el) => el.font_weight(700).bg(P.hover)).child(line || " "); });
     else rows = (d?.messages ?? []).map((m, i) => this.message(m, i));
     if (!rows.length) rows = [div().p(12).text_color(P.muted).child("표시할 내용이 없습니다")];
     const last = rows.length;
     rows.push(div().id(d ? "chat-end-ready" : "chat-end-loading").flex_none().h(1).on_size_change((_size, cx) => { if (d && !this.detailScrolled) { this.detailScrolled = true; this.detailScroll?.scroll_to_item(last); cx.notify(); } }));
     return v_flex().id("chat-root").size_full().bg(P.white)
       .child(head)
-      .child(div().flex_none().px(14).py(4).text_size(10).text_color(P.muted).bg("#1b2637").border_b(1).border_color(P.line)
+      .child(div().flex_none().px(14).py(4).text_size(10).text_color(P.muted).bg(P.paper).border_b(1).border_color(P.line)
         .child(d?.kind === "screen" ? "대화 기록이 없어 터미널 화면을 표시합니다" : "시간순 (아래가 최신)"))
       .child(v_flex().id("chat-scroll").flex_1().min_h(0).gap(4).overflow_y_scrollbar().track_scroll(this.detailScroll).children(rows));
   }
@@ -306,7 +306,7 @@ export class ChatPart {
       if (this.termKey === sig0) { this.measuredBox(); return true; }
       try {
         this.termId = openOverlay({ kind: "window", key: "hansol-term", width: W0, height: H0, at: { x: col0 ? b0.x + b0.width - W0 : b0.x, y: b0.y }, layout: col0 ? { type: "block", content: { mod: "hansol", props: { role: "detail", collapsed: true, name: pick.name ?? pick.address } } } : { type: "column", children: [
-          { type: "block", size: { px: 52 }, content: { mod: "hansol", props: { role: "pick-head", name: pick.name ?? pick.address } } }, // ★81 a thin head: name, シェル, 折りたたむ, × 閉じる (★103-4: 52px, buttons 32px+)
+          { type: "block", size: { px: 52 }, content: { mod: "hansol", props: { role: "pick-head", name: pick.name ?? pick.address, address: pick.address } } }, // ★81 a thin head: name, シェル, 折りたたむ, × 閉じる (★103-4: 52px, buttons 32px+)
           { type: "block", content: { terminal: pick.address } }] } });
         this.termKey = sig0; this.termBox = { x: col0 ? b0.x + b0.width - W0 : b0.x, y: b0.y, w: W0, h: H0, frame: RIGHT_WIN_FRAME }; setShared("hansol.termBox", this.termBox); return true;
       } catch (e) { this.termKey = null; this.termFail = String(e); this.termPick = null; return false; }
@@ -425,7 +425,7 @@ export class ChatPart {
   }
   face(a, size, file) {
     const f = file ?? this.faceFile(a);
-    const box = div().flex_none().w(size).h(size).rounded(10).overflow_hidden().relative().bg("#EDE6D8");
+    const box = div().flex_none().w(size).h(size).rounded(RAD(10)).overflow_hidden().relative().bg("#EDE6D8");
     if (!f) return box.flex().items_center().justify_center().child(platformIcon(a, Math.round(size * 0.5))); // no picture yet: the program's icon, not an empty square
     const w = size * 1.9;
     return box.child(image(f).absolute().left((size - w) / 2).top(-size * 0.08).w(w).h(w * 1.56));
@@ -445,6 +445,20 @@ export class ChatPart {
     const q = endQuestion(a, list);
     openOverlay({ mod: "hansol", kind: "dialog", modal: true, width: 440, height: q.strong ? 270 : 220,
       props: { role: "confirm", id: a.id, name: a.name ?? a.address, address: a.address, source: a.source, text: q.text, strong: q.strong } });
+  }
+
+  // The same question for a shell picked from the left list; "はい" runs room.js confirmYes "shell-end".
+  askShellEnd(p) {
+    const q = endQuestion({ shell: true, address: p.address, name: p.name });
+    openOverlay({ mod: "hansol", kind: "dialog", modal: true, width: 440, height: 220,
+      props: { role: "confirm", action: "shell-end", address: p.address, name: p.name ?? p.address, text: q.text, strong: false } });
+  }
+
+  // A herdr TUI pane ('tui:<pane>') or workspace ('space:<id>'): asked first; "はい" runs room.js confirmYes "tui-close" (collector --close-tui).
+  askTuiClose(target, name, space) {
+    const text = `${space ? "TUI 작업공간" : "TUI 세션"} 「${name ?? target}」을 닫으시겠습니까?${space ? " 안의 터미널도 모두 종료됩니다." : ""}\n이 작업은 되돌릴 수 없습니다.`;
+    openOverlay({ mod: "hansol", kind: "dialog", modal: true, width: 440, height: 220,
+      props: { role: "confirm", action: "tui-close", target, name: name ?? target, text, strong: false } });
   }
 
   // ★30-7: run the chosen App operation; a failure stays on this agent's card (no error window).
@@ -482,7 +496,11 @@ export class ChatPart {
     // ★103-3 (2nd) a press on the head never drags the window (attached). ★105 N6: the same swallowed-by-comment slip (the border was lost)
     return h_flex().id("pick-head-root").size_full().px(14).gap(10).items_center().bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_b(1).border_color(P.line)
       .child(div().flex_1().min_w(0).truncate().text_size(16).font_weight(700).text_color(P.ink).child(p.name ?? ""))
-      .child(div().flex_none().px(8).py(3).rounded(6).bg("#334155").text_size(13).font_weight(700).text_color("#c2cede").child("셸"))
+      .child(div().flex_none().px(8).py(3).rounded(RAD(6)).bg("#334155").text_size(13).font_weight(700).text_color("#c2cede").child("셸"))
+      // ending the shell itself (asked first; room.js confirmYes "shell-end"): kill, then remove the finished terminal from the list
+      .when(!!p.address, (e) => e.child(h_flex().id("pick-end").tooltip("셸 세션을 종료하고 목록에서 지웁니다. 확인 후 진행하며 되돌릴 수 없습니다").flex_none().h(36).px(10).gap(6).items_center().rounded(RAD(8)).border(1).border_color("#f0d2d8").bg(P.paper).cursor_pointer()
+        .hover((s) => s.bg("#472c36")).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.askShellEnd(p); })
+        .child(icon("trash", 16, "#d6455d")).child(div().text_size(14).font_weight(700).text_color("#d6455d").child("종료"))))
       .child(iconBtn("pick-fold", "right", () => setShared("hansol.rcollapse", { on: true, at: Date.now() }), { size: 36, isize: 20 })) // ★103-4 fold to the edge
       .child(iconBtn("pick-close", "x", () => { setShared("hansol.close", { at: Date.now() }); }, { size: 36, isize: 20 })); // ★104 U13: × as an icon, like the agent head
   }
@@ -493,13 +511,13 @@ export class ChatPart {
     return v_flex().id("detail-folded").size_full().items_center().py(10).gap(12).bg(P.paper).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).border_l(1).border_color(P.line)
       .child(iconBtn("unfold-btn", "left", () => slide.collapse(false), { size: 36, isize: 20 }))
       .child(div().flex_none().text_size(14).text_color(P.muted).child("열기")) // ★104 U2: the arrow alone does not say what it does
-      .child(a ? this.face(a, 32, p.face) : div().flex_none().w(32).h(32).rounded(8).bg("#334155"))
+      .child(a ? this.face(a, 32, p.face) : div().flex_none().w(32).h(32).rounded(RAD(8)).bg("#334155"))
       .child(iconBtn("folded-close", "x", (cx) => slide.close(cx), { size: 36, isize: 20 }));
   }
 
   // Role "confirm": the question before an agent is ended. Only "はい" calls the App.
   confirmView() {
-    const p = props(), btn = (id, label, fn, color, fill) => div().id(id).flex_none().px(16).py(8).rounded(8).border(1).border_color(color).bg(fill ?? P.white)
+    const p = props(), btn = (id, label, fn, color, fill) => div().id(id).flex_none().px(16).py(8).rounded(RAD(8)).border(1).border_color(color).bg(fill ?? P.white)
       .text_size(13).font_weight(700).text_color(fill ? "#ffffff" : color).cursor_pointer().hover((s) => s.opacity(0.85)).on_click(fn).child(label);
     const yes = () => { if (p.action) this.confirmYes(p); else endAgent(run, { address: p.address, source: p.source }, true); closeOverlay(p.overlay); }; // ★61-1 room-close / stop: room.js
     return v_flex().id("confirm-root").size_full().p(18).gap(14).bg(P.paper).overflow_hidden() // ★95-7: a long question scrolls; the buttons stay
@@ -539,14 +557,14 @@ export class ChatPart {
     else if (d?.kind === "screen") body = div().p(12).text_size(11).text_color(P.ink)
       .font_family(settings().font_family ?? "Consolas").child(String(stripTerminalFrame(d.screen).text || "(화면이 비어 있습니다)")); // 28th 27-U1/U2
     else if (tab === "tree") body = v_flex().p(10).gap(2).children(rows.map(([n, depth]) => { const ks = stateOf(n), me = n.id === a.id;
-      return h_flex().id(`tree-${n.id}`).gap(6).px(6).py(4).items_center().rounded(7).cursor_pointer().hover((e) => e.bg("#2b3b50")).when(me, (e) => e.bg("#243d5d")).on_click((_e, cx) => slide.select(n, cx))
+      return h_flex().id(`tree-${n.id}`).gap(6).px(6).py(4).items_center().rounded(RAD(7)).cursor_pointer().hover((e) => e.bg(P.raised)).when(me, (e) => e.bg(P.select)).on_click((_e, cx) => slide.select(n, cx))
         .child(div().flex_none().w(depth * 14)).child(div().flex_none().w(10).text_size(10).text_color(P.muted).child(depth ? "└" : "")).child(dot(ks.color, 8)).child(platformIcon(n, 12))
         .child(div().flex_1().min_w(0).truncate().text_size(12).font_weight(me ? 700 : 400).text_color(P.ink).child(String(n.name || n.address || ""))).child(div().flex_none().text_size(10).font_weight(600).text_color(ks.color).child(`${ks.label} ${ago(n.since)}`)); }));
     else body = v_flex().min_h_full().gap(8).px(14).py(6).children(this.messageList(fitTail(msgs, W, room), plat.name, a.status)); // Z7: oldest on top, newest below; a short record packs to the top (fitTail keeps the newest when it is long)
     return frame.children(parts)
       .child(div().id("panel-scroll").flex_1().min_h(0).overflow_y_scrollbar().child(body))
       .when(a.source === "tui", (el) => el.child(v_flex().flex_none().px(14).pt(8).pb(12).gap(4).items_center() // ★74-3: a herdr TUI agent: read here, instruct by herdr agent prompt (no App-only buttons)
-        .when(!!a.address, (e2) => e2.child(h_flex().id("panel-tui-send").w_full().h(36).items_center().justify_center().gap(8).rounded(10).bg("#1e6fe0").cursor_pointer()
+        .when(!!a.address, (e2) => e2.child(h_flex().id("panel-tui-send").w_full().h(36).items_center().justify_center().gap(8).rounded(RAD(10)).bg(P.solid).cursor_pointer()
           .hover((s) => s.bg("#1860c4")).on_click((_e, cx) => { cx.stop_propagation(); this.openTuiPrompt(a); })
           .child(div().text_size(13).font_weight(700).text_color("#ffffff").child("지시 보내기"))))
         .child(div().text_size(10).text_color(P.muted).child(a.address ? "herdr TUI 에이전트입니다 (읽기와 지시만 가능)" : "herdr TUI 에이전트입니다 (대상을 찾을 수 없어 읽기만 가능)"))));
@@ -567,7 +585,7 @@ export class ChatPart {
   messageList(msgs, agentName, status) {
     const out = []; let run = [];
     const flush = () => { if (!run.length) return; const rows = run; run = [];
-      out.push(v_flex().id(`pm-log-${out.length}`).w_full().gap(4).px(14).py(10).rounded(10).bg("#14213d")
+      out.push(v_flex().id(`pm-log-${out.length}`).w_full().gap(4).px(14).py(10).rounded(RAD(10)).bg("#14213d")
         .child(h_flex().gap(6).items_center().child(icon("terminal", 14, "#cbd5e1")).child(div().text_size(15).font_weight(700).text_color("#cbd5e1").child("최근 실행 기록")))
         .children(rows.map(({ m, last }, j) => h_flex().id(`pm-log-${out.length}-${j}`).w_full().gap(8).items_center().font_family("Consolas").text_size(16).text_color("#e5e7eb")
           .child(div().flex_1().min_w(0).truncate().child(String(m.text ?? "").split(/\r?\n/)[0])).child(this.markEl(this.toolMark(m, last, status, true)))))); };
@@ -578,8 +596,8 @@ export class ChatPart {
 
   // One line of the conversation: who, when, what. A tool's work is a small row with its mark (✓ done / … waiting or running / ✕ failed).
   panelMessage(m, i, agentName, last = false, status = null) {
-    if (m.role === "tool") return h_flex().id(`pm-${i}`).w_full().gap(8).px(10).py(6).items_center().rounded(6).bg("#202c3e") // 22nd N7: a pale fill and a thin pale frame (the same two colours as detail.js's screen-tool), muted text: a record, not something said
-      .border(1).border_color("#3b4b60").text_size(16).text_color(P.muted)
+    if (m.role === "tool") return h_flex().id(`pm-${i}`).w_full().gap(8).px(10).py(6).items_center().rounded(RAD(6)).bg(P.white) // 22nd N7: a pale fill and a thin pale frame (the same two colours as detail.js's screen-tool), muted text: a record, not something said
+      .border(1).border_color(P.line).text_size(16).text_color(P.muted)
       .child(div().flex_1().min_w(0).truncate().child(String(m.text ?? "").split("\n")[0])).child(this.markEl(this.toolMark(m, last, status)));
     const user = m.role === "user", { text: body, from } = unwrapHc(m.text);
     // ★105 (codex_3): a rounder bubble (12), the agent's in a pale blue, the time at the right end of the name row
@@ -589,13 +607,13 @@ export class ChatPart {
         .when(!!from, (e) => e.child(div().id(`pm-from-${i}`).flex_none().text_size(11).text_color(P.muted).tooltip(String(from)).child("상위 에이전트")))
         .child(div().flex_1())
         .child(div().flex_none().text_color(P.muted).child(m.at ? clock(m.at) : "")))
-      .child(div().w_full().px(14).py(10).rounded(12).bg(user ? "#274565" : "#243d5d").border(user ? 1 : 0).border_color("#4e739e").text_size(17).text_color(P.ink).child(soft(body)));
+      .child(div().w_full().px(14).py(10).rounded(RAD(12)).bg(user ? "#274565" : P.select).border(user ? 1 : 0).border_color("#4e739e").text_size(17).text_color(P.ink).child(soft(body)));
   }
 
   message(m, i) {
-    const who = { user: ["사용자", "#71b2ff", "#243d5d"], assistant: ["에이전트", "#78d6ad", "#203c36"],
-      tool: ["도구", "#89909d", "#202c3e"] }[m.role] ?? [m.role, P.muted, P.bg];
-    return v_flex().id(`msg-${i}`).w_full().gap(3).px(10).py(7).rounded(7).bg(who[2])
+    const who = { user: ["사용자", "#71b2ff", P.select], assistant: ["에이전트", "#78d6ad", "#203c36"],
+      tool: ["도구", "#89909d", P.white] }[m.role] ?? [m.role, P.muted, P.bg];
+    return v_flex().id(`msg-${i}`).w_full().gap(3).px(10).py(7).rounded(RAD(7)).bg(who[2])
       .child(h_flex().gap(6).items_center().text_size(10)
         .child(div().font_weight(700).text_color(who[1]).child(who[0]))
         .child(div().text_color(P.muted).child(m.at ? clock(m.at) : "")))

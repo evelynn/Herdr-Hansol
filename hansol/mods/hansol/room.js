@@ -3,14 +3,15 @@
 // "止める" (hc interrupt) is asked first too. Nothing is called before the person's button; the logic is in actions.js (tested with fakes).
 import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
-import { appHome, closeOverlay, hc, openOverlay, pickFolder, props, readTextFile, run, setShared, shared, spaces } from "herdr";
-import { P, STATE, RIGHT_POP_GAP, chipLeft } from "./common.js";
+import { appHome, closeOverlay, exec, hc, openOverlay, pickFolder, props, readTextFile, run, setShared, shared, spaces } from "herdr";
+import { RAD, P, STATE, RIGHT_POP_GAP, chipLeft } from "./common.js";
 import { inboxList, inboxHeight, inboxExtraH, INBOX_SLACK } from "./approve.js";
 import { icon } from "./icons.js";
-import { closeRoom, closeRoomQuestion, findAgent, folderLabel, newRoom, newRoomHeight, normFolder, parseCommand, recentFolders, roomOps, runAgentOps, runMovePlan, spaceForIsland, stopAgent, stopQuestion } from "./actions.js";
+import { gitPushYes } from "./git-work.js";
+import { closeRoom, closeRoomQuestion, endShell, findAgent, folderLabel, newRoom, newRoomHeight, normFolder, parseCommand, recentFolders, roomOps, runAgentOps, runMovePlan, spaceForIsland, stopAgent, stopQuestion } from "./actions.js";
 
 export const OP_ERROR_MS = 8000; // ★104 U12
-export const REVIEW_COMMANDS =["select", "detail", "plate", "stop", "launch", "panel", "panel-row", "panel-menu", "inbox", "feed", "chip", "room-new", "space-menu", "settings", "layout", "git"];
+export const REVIEW_COMMANDS =["select", "detail", "plate", "stop", "launch", "panel", "panel-row", "panel-menu", "inbox", "chip", "room-new", "space-menu", "settings", "layout", "git", "gitdo", "gitfor", "mosses"];
 
 export class RoomPart {
   // ★61-1 review pictures without clicks: herdr-app do hansol.<command>[:<target>] (or the target in <appHome>/hansol-aim.json).
@@ -36,10 +37,12 @@ export class RoomPart {
     else if (name === "inbox") { if (arg === "done" || arg === "blocked") this.inboxKey = arg; this.toggleInbox(); } // 14th D2: `inbox:done` opens under the 報告あり chip (default 承認待ち) // 4th W: the chips 承認待ち / 報告あり. 8th Y2: sent again, it closes (the region's flag, or the window by the id kept here)
     else if (name === "room-new") this.openNewRoom(arg || ""); // 5th X5: the make-a-space window (arg: a folder to fill in)
     else if (name === "space-menu") { if (arg) setShared("hansol.panel", { open: true, spaceMenu: arg, at: Date.now() }); } // 5th X5: a heading's ⋯ menu; panel.js (office-fix-left5) reads `spaceMenu`
-    else if (name === "feed") this.openFeed(); // the footer's 最近の動き (feed.js)
     else if (name === "settings") this.openSettingsMenu(); // 2026-11-19 the header's 설정 menu (main.js)
+    else if (name === "mosses") setShared("hansol.mosses", { cmd: arg || "cluster", at: Date.now() }); // 2026-11-26 the MOSSES screens for the review pictures: boot | peek[:off] | lock:<n> | open:<n> | enter:<n> | fx | stat (mosses.js)
     else if (name === "layout") { if (arg) this.setLayout(arg); } // layout:office / layout:guild-dark, as the menu's rows
-    else if (name === "git") { if (arg) await this.gitCommand(arg); } // 2026-11-21 git:<space>[@<hash>[@<path>]] the Git windows (git-tree.js)
+    else if (name === "git") { if (arg) await this.gitCommand(arg); }
+    else if (name === "gitfor") { const t = String(arg ?? ""), m = list.filter((a) => String(a.island_title ?? a.space ?? "") === t); this.gitOpenFor(m, t, { spawn: (f) => f() }); } // the MOSSES GIT buttons' call, for a system by its title
+    else if (name === "gitdo") { if (arg) setShared("hansol.gitDo", { cmd: arg, at: Date.now() }); } // 2026-11-27 in the open Git window, as its buttons: pane:<x> | stage-all | toggle:<path> | diff:<path> | commit:<msg> | push | push-yes | switch:<name> (git-work.js) // 2026-11-21 git:<space>[@<hash>[@<path>]] the Git windows (git-tree.js)
     else if (name === "chip") { const st = STATE[arg ?? "working"]; if (st) this.pressChip(st, list); } // the header's state chips: chip:<working|idle|blocked|done>
     else if (name === "panel-row") { if (arg) setShared("hansol.panel", { open: true, row: arg, at: Date.now() }); } // ★72-3 a row pressed: that terminal (t8x) in the right column's window
     return true;
@@ -116,15 +119,15 @@ export class RoomPart {
     if (String(isl?.key ?? "").startsWith("free:")) return null; // ★68-2 the free desks are not a space
     const sp = spaceForIsland(members, list, isl), ops = roomOps(sp, this.roomLive());
     if (!ops.length) return null;
-    const btn = (op) => div().id(`room-${op.key}-${isl.key}`).flex_none().px(6).py(2).rounded(6).border(1).border_color(op.key === "close" ? "#e3a9b3" : P.line).bg(P.white)
-      .text_size(10).font_weight(600).text_color(op.key === "close" ? "#d6455d" : P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50"))
+    const btn = (op) => div().id(`room-${op.key}-${isl.key}`).flex_none().px(6).py(2).rounded(RAD(6)).border(1).border_color(op.key === "close" ? "#e3a9b3" : P.line).bg(P.white)
+      .text_size(10).font_weight(600).text_color(op.key === "close" ? "#d6455d" : P.ink).cursor_pointer().hover((s) => s.bg(P.raised))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => {
         cx.stop_propagation(); this.plateOpen = null;
         cx.spawn(async (cx) => { const r = await runAgentOps(run, [op]); this.roomError = r.ok ? null : { key: isl.key, text: r.error }; cx.notify(); });
         cx.notify();
       }).child(op.label);
-    return v_flex().gap(3).pb(4).mb(2).border_b(1).border_color("#3b4b60")
+    return v_flex().gap(3).pb(4).mb(2).border_b(1).border_color(P.line)
       .child(h_flex().gap(4).flex_wrap().children(ops.map(btn)))
       .when(this.roomError?.key === isl.key, (el) => el.child(div().text_size(9).text_color("#d6455d").child(this.roomError.text)));
   }
@@ -144,7 +147,10 @@ export class RoomPart {
   // The "はい" of the confirm dialog for the room / stop actions (ending an agent stays in chat.js).
   confirmYes(p) {
     if (p.action === "room-close") return closeRoom(run, p.space, true);
+    if (p.action === "git-push") return gitPushYes(p); // 2026-11-27 the Git window runs it (git-work.js)
     if (p.action === "stop") return stopAgent((_cmd, args) => hc(args), { address: p.address, source: p.source }, true); // the App's own hc(): no PATH lookup
+    if (p.action === "shell-end") { setShared("hansol.close", { at: Date.now() }); return endShell(hc, p.address, true); } // the picked shell's window goes with it
+    if (p.action === "tui-close") return (async () => { if (!this.feed?.config) await this.loadConfig(); const c = this.feed?.config; if (c) await exec(c.python, [c.collector, "--close-tui", String(p.target)]); })(); // the confirm window has no config of its own
     return null;
   }
 
@@ -163,8 +169,8 @@ export class RoomPart {
 
   // "＋ 部屋": for the band (placed by the band's owner beside the launch button).
   newRoomButton(compact = false) { // compact (a narrow band): only the "＋"
-    return h_flex().id("room-new-btn").flex_none().ml(6).px(compact ? 8 : 10).h(30).gap(6).items_center().rounded(10).border(1).border_color(P.line)
-      .bg(P.white).cursor_pointer().hover((s) => s.bg("#253449"))
+    return h_flex().id("room-new-btn").flex_none().ml(6).px(compact ? 8 : 10).h(30).gap(6).items_center().rounded(RAD(10)).border(1).border_color(P.line)
+      .bg(P.white).cursor_pointer().hover((s) => s.bg(P.hover))
       .on_click(() => this.openNewRoom())
       .child(icon("room-add", 16, P.blue))
       .when(!compact, (el) => el.child(div().text_size(12).font_weight(600).text_color(P.ink).child("공간")));
@@ -211,9 +217,9 @@ export class RoomPart {
     };
     const setFolder = (v, cx) => { this.rFolder?.set_value?.(v); f.error = null; cx.notify(); };
     // 8th Y6: gpui-base's Input is unstyled (no frame), so each one sits in a framed box
-    const framed = (input) => div().w_full().h(40).px(10).flex().items_center().rounded(8).border(1.5).border_color("#b9b4a6").bg("#1b2637").child(input);
-    const chip = (id, text, fn) => div().id(id).flex_none().max_w(200).truncate().px(10).py(4).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(12).text_color(P.ink)
-      .cursor_pointer().hover((s) => s.bg("#2b3b50")).on_click((_e, cx) => fn(cx)).child(text);
+    const framed = (input) => div().w_full().h(40).px(10).flex().items_center().rounded(RAD(8)).border(1.5).border_color("#b9b4a6").bg(P.paper).child(input);
+    const chip = (id, text, fn) => div().id(id).flex_none().max_w(200).truncate().px(10).py(4).rounded(RAD(8)).border(1).border_color(P.line).bg(P.white).text_size(12).text_color(P.ink)
+      .cursor_pointer().hover((s) => s.bg(P.raised)).on_click((_e, cx) => fn(cx)).child(text);
     return v_flex().id("room-new-root").size_full().p(18).gap(12).bg(P.paper).overflow_hidden()
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(p.overlay); cx.stop_propagation(); } else if (e.key === "enter") { submit(e, cx); cx.stop_propagation(); } })
       .child(div().flex_none().text_size(15).font_weight(700).text_color(P.ink).child("새 공간 (프로젝트)"))
@@ -225,9 +231,9 @@ export class RoomPart {
             .child(h_flex().gap(6).flex_wrap().children((f.recent ?? []).map((d, i) => chip(`room-new-recent-${i}`, folderLabel(d) || d, (cx) => setFolder(d, cx)))))))))
       .child(h_flex().flex_none().gap(10).items_center()
         .child(div().id("room-new-error").flex_1().min_w(0).max_h(36).overflow_hidden().text_size(11).text_color("#d6455d").child(f.error ?? "")) // 19th G2: the error shares the buttons' row (no row reserved for it)
-        .child(div().id("room-new-cancel").flex_none().px(16).py(8).rounded(8).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink)
+        .child(div().id("room-new-cancel").flex_none().px(16).py(8).rounded(RAD(8)).border(1).border_color(P.line).bg(P.white).text_size(13).font_weight(700).text_color(P.ink)
           .cursor_pointer().on_click(() => closeOverlay(p.overlay)).child("취소"))
-        .child(div().id("room-new-go").flex_none().px(16).py(8).rounded(8).bg("#1e6fe0").text_size(13).font_weight(700).text_color("#ffffff")
+        .child(div().id("room-new-go").flex_none().px(16).py(8).rounded(RAD(8)).bg(P.solid).text_size(13).font_weight(700).text_color("#ffffff")
           .cursor_pointer().on_click(submit).child(f.busy ? "만드는 중…" : "만들기")));
   }
 }

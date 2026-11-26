@@ -1,6 +1,6 @@
 # Herdr-Hansol
 
-Herdr-Hansol is a pixel-art layout for [Herdr App](https://herdr.dev) that shows the status of your coding agents at a glance. The default scene is an **adventurers' guild hall**, and you can switch to an **office** scene. The interface is in Korean, with the Hansol logo and a dark theme.
+Herdr-Hansol is a pixel-art layout for [Herdr App](https://herdr.dev) that shows the status of your coding agents at a glance. The default scene is **MOSSES**, a space console where each workspace is a planetary system, and you can switch to an **adventurers' guild hall** or an **office** scene. The interface is in Korean, with the Hansol logo and a dark theme.
 
 ![Adventurers' guild hall sample](hansol/preview-guild-day.png)
 
@@ -8,11 +8,12 @@ This sample shows 8 demo agents in 3 workspaces (North, West, East). In the app,
 
 ## Features
 
-- Shows running agents, such as Claude Code and Codex, by workspace in the guild hall (default) or the office.
+- Shows running agents, such as Claude Code and Codex, by workspace in MOSSES (default), the guild hall or the office.
 - Switch the layout from the **설정** (Settings) menu in the header.
 - Shows the working, awaiting approval, reported and idle counts in the header.
 - Selecting an agent opens its terminal in a popup, with its workspace and status.
 - **에이전트 상세** (Agent details) at the bottom shows the conversation and tool runs.
+- Right-click a planet in MOSSES for its menu. **GIT** there opens the workspace's repository: commit graph, changed files, commit, push (with a confirm step), branch switch, GitHub PRs and CI runs (`gh`), GitLab merge requests, issues and pipelines (the token Git already stores), and dev tools (Explorer, VS Code, a terminal, npm scripts, `.env` keys, listening ports).
 - A Codex conversation is linked only when the request and history on screen match exactly one session. Otherwise the terminal screen is shown.
 
 ## Installation

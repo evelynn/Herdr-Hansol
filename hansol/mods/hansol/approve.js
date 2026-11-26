@@ -72,7 +72,8 @@ export async function answerApproval(io, address, want, waitMs = 1800) {
   const scr = await io.hc(["read", address]);
   const plan = approvalPlan(scr?.stdout ?? "");
   if (!plan.readable) return { ok: false, reason: "unreadable", key: null };
-  const key = want === "no" ? plan.no : plan.yes;
+  const key = want && typeof want === "object" ? (plan.options.some((o) => o.n === Number(want.n) && o.label === want.label) ? Number(want.n) : null) // 2026-11-27 a choice by its number: only while the screen still shows it with these words
+    : want === "no" ? plan.no : plan.yes;
   if (key == null) return { ok: false, reason: "no-option", key: null };
   const before = statusOf(await io.hc(["get", address, "--json"]));
   const r = await io.hc(["keys", address, String(key)]);
@@ -82,6 +83,31 @@ export async function answerApproval(io, address, want, waitMs = 1800) {
   if (!after.status) return { ok: false, reason: "unchanged", key };
   if (after.status === "blocked" && (before.status !== "blocked" || after.msg === before.msg)) return { ok: false, reason: "unchanged", key };
   return { ok: true, reason: "ok", key };
+}
+
+// 2026-11-26 One answer per question, whichever surface is pressed (the MOSSES floor, the terminal window's head, the approval cards).
+// The lock is one record per address in a store every copy reads (shared "hansol.mzAnswered"): { at, busy }.
+//   busy   an answer is on its way (from the press until answerApproval is over; given up after ANSWER_BUSY_MAX_MS)
+//   !busy  an answer is over: no new press for ANSWER_HOLD_MS (the list still says "blocked" until the next read, every 4 s)
+// A key that was certainly not sent (KEY_NOT_SENT) frees the lock at once; "unchanged" / "timeout" keep it (the key may have gone).
+export const ANSWER_HOLD_MS = 6000, ANSWER_BUSY_MAX_MS = 30000, ANSWER_TIMEOUT_MS = 15000;
+export const KEY_NOT_SENT = new Set(["unreadable", "no-option", "send-failed"]);
+export function answerLocked(entry, now = Date.now()) {
+  if (entry == null) return false;
+  const e = typeof entry === "number" ? { at: entry } : entry;
+  return now - e.at < (e.busy ? ANSWER_BUSY_MAX_MS : ANSWER_HOLD_MS);
+}
+// store: { get() -> { address: entry }, set(all) }. Returns answerApproval's result, or { ok: false, reason: "locked" } when another press holds the lock.
+export async function answerOnce(io, store, address, want) {
+  if (answerLocked((store.get() ?? {})[address])) return { ok: false, reason: "locked", key: null };
+  store.set({ ...(store.get() ?? {}), [address]: { at: Date.now(), busy: true } });
+  let res;
+  try { res = await Promise.race([answerApproval(io, address, want), io.sleep(ANSWER_TIMEOUT_MS).then(() => ({ ok: false, reason: "timeout", key: null }))]); }
+  catch (err) { res = { ok: false, reason: "send-failed", key: null, detail: String(err?.message ?? err).slice(0, 120) }; }
+  const all = { ...(store.get() ?? {}) };
+  if (!res.ok && KEY_NOT_SENT.has(res.reason)) delete all[address]; else all[address] = { at: Date.now() };
+  store.set(all);
+  return res;
 }
 
 // 38th 36-D2 (office-fix43b): the window's pieces (head / conversation / card block) are separate copies and read the list on their own, so right after an approval the card block can still
@@ -213,6 +239,8 @@ export const REASON_TEXT = {
   "no-option": "선택할 수 있는 항목이 없습니다. 터미널에서 응답해 주세요",
   "send-failed": "키를 전송하지 못했습니다. 터미널에서 응답해 주세요",
   unchanged: "응답했지만 상태가 바뀌지 않았습니다. 터미널 화면을 확인해 주세요",
+  timeout: "응답 확인이 끝나지 않았습니다. 터미널 화면을 확인해 주세요",
+  locked: "이미 응답을 보내는 중입니다",
 };
 // 18th F5 (inbox.js): the two lines of a report row.
 // 20th H6: a model in brackets at the end ("Claude Code（Opus 5.5）") is not part of the name: the name is "Claude Code", the model goes after the room (reportModel).

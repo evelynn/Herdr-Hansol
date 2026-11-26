@@ -26,12 +26,13 @@
     "auto_rooms": true,
     "spare_desks": 1,
     "seat_hold_min": 10,
-    "_help_people": "walk8: the 8-frame walk; walk_frames: false shows one picture with a bob instead of stepping the walking pictures.",
+    "_help_people": "walk8: the 8-frame walk; walk_frames: false shows one picture with a bob instead of stepping the walking pictures. walk_fps: walk redraws a second (1-8, default 4; 8 = smoothest, most CPU).",
     "walk8": true,
     "walk_frames": true,
+    "walk_fps": 4,
 
-    "_help_weather": "The wall board and the window show the weather from Open-Meteo (free, no key), asked by the collector at most every 30 minutes. No place given: a city chosen from the PC's timezone. place: a city name, looked up once. lat / lon: exact (beats place). label: the name on the board. enabled: false never asks.",
-    "weather": {"enabled": true, "place": null, "lat": null, "lon": null, "label": ""},
+    "_help_weather": "The wall board and the window show the weather from Open-Meteo (free, no key), asked by the collector at most every 30 minutes. No place given: a city chosen from the PC's timezone. place: a city name, looked up once. lat / lon: exact (beats place). label: the name on the board. Off by default: only enabled: true asks.",
+    "weather": {"enabled": false, "place": null, "lat": null, "lon": null, "label": ""},
 
     "_help_board": "The LED board on the wall: rows of dots (its width follows the room unless set).",
     "board": {"rows": 30},

@@ -3,7 +3,7 @@
 import { svg } from "gpui-kit";
 
 export const ICON_DIR = "mods/hansol/icons";
-export const ICON_NAMES = ["pencil", "trash", "more", "x", "check", "stop", "play", "grip", "plus", "search", "down", "right", "left", "refresh", "link", "legend", "agent-add", "terminal-add", "room-add", "folder", "chart", "terminal", "chat", "tree", "crown", "minimize", "maximize", "office", "board", "p-claude", "p-codex", "p-opencode", "p-cursor", "p-agy", "rest", "talk"]; // ★105-3: minimize/maximize/office/board = the header's line pictures; 4th W5: p-* = the launch window's provider tiles (plain line pictures, not the vendors' logos; the shell uses "terminal")
+export const ICON_NAMES = ["settings", "pencil", "trash", "more", "x", "check", "stop", "play", "grip", "plus", "search", "down", "right", "left", "refresh", "link", "legend", "agent-add", "terminal-add", "room-add", "folder", "chart", "terminal", "chat", "tree", "crown", "minimize", "maximize", "office", "board", "p-claude", "p-codex", "p-opencode", "p-cursor", "p-agy", "p-atlas", "rest", "talk"]; // ★105-3: minimize/maximize/office/board = the header's line pictures; 4th W5: p-* = the launch window's provider tiles (plain line pictures, not the vendors' logos; the shell uses "terminal")
 export const iconPath = (name) => `${ICON_DIR}/${name}.svg`;
 // A picture of the given name; an unknown name draws nothing (never a broken picture).
 export const icon = (name, size = 14, color = null) => {

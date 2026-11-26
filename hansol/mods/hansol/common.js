@@ -1,5 +1,6 @@
 // hansol: shared state model, colours and small helpers (used by every part).
 import { div, svg, image } from "gpui-kit";
+import { shared } from "herdr";
 import { answeredNow } from "./approve.js";
 import { shellWaiting } from "./ui-rules.js";
 
@@ -74,9 +75,9 @@ export function applyColors(config) {
     if (hexOk(v)) { st.color = v; st.wash = thin(v, 0.88); }
   }
   const ui = cols.ui ?? {};
-  if (hexOk(ui.surface)) P.paper = ui.surface;
-  if (hexOk(ui.ink)) P.ink = ui.ink;
-  if (hexOk(ui.accent)) P.blue = ui.accent;
+  if (hexOk(ui.surface)) PALETTES.base.paper = ui.surface; // (the user's colours go to the base set; the MOSSES set is its own)
+  if (hexOk(ui.ink)) PALETTES.base.ink = ui.ink;
+  if (hexOk(ui.accent)) PALETTES.base.blue = ui.accent;
 }
 // Platform (what the agent runs on / which contract): icon from Herdr app's own icons/.
 export const PLATFORM = {
@@ -89,15 +90,31 @@ export const PLATFORM = {
   antigravity: { name: "Antigravity", icon: "icons/antigravity.svg" },
   agy: { name: "Antigravity", icon: "icons/antigravity.svg" },
   gemini: { name: "Gemini", icon: "icons/gemini.svg", tint: "#1a73e8" },
+  "atlas-code": { name: "Atlas Code", icon: "mods/hansol/icons/atlas.svg", tint: "#5b8cff" },
 };
 export const REFRESH_MS = 4000;
-export const P = { ink: "#e7edf6", muted: "#aebed2", line: "#3b4b60", bg: "#151e2e", white: "#202c3e", paper: "#1b2637", blue: "#71b2ff" };
+// 2026-11-26 the palette follows the layout: the MOSSES layout (mosses.js) has its own set, so the band, the lists, the popups and the terminal
+// window all take it at once (every part reads P.<name> when it draws).
+const PALETTES = {
+  base: { ink: "#e7edf6", muted: "#aebed2", line: "#3b4b60", bg: "#151e2e", white: "#202c3e", paper: "#1b2637", blue: "#71b2ff", hover: "#253449", raised: "#2b3b50", press: "#314259", select: "#243d5d", solid: "#1e6fe0" },
+  mosses: { ink: "#e8f0fa", muted: "#8fa4bf", line: "#22364f", bg: "#060b16", white: "#132036", paper: "#0a1323", blue: "#56d3ea", hover: "#14233a", raised: "#182b46", press: "#1e3554", select: "#123a4c", solid: "#1a8ba4" },
+};
+const palette = () => { let v; try { v = shared("hansol.layout"); } catch {} return v === "mosses" || v === "terminal" ? PALETTES.mosses : PALETTES.base; };
+// The corner radius follows the layout too: the MOSSES console has one radius (4) for every plate, button and popup.
+export const RAD = (n) => { let v; try { v = shared("hansol.layout"); } catch {} return v === "mosses" || v === "terminal" ? Math.min(n, 8) : n; };
+export const P = { get ink() { return palette().ink; }, get muted() { return palette().muted; }, get line() { return palette().line; }, get bg() { return palette().bg; }, get white() { return palette().white; }, get paper() { return palette().paper; }, get blue() { return palette().blue; },
+  get hover() { return palette().hover; }, get raised() { return palette().raised; }, get press() { return palette().press; }, get select() { return palette().select; }, get solid() { return palette().solid; } };
 export function activityLabel(a) {
   const title = String(a?.activity || a?.title || "").trim().replace(/\s+/g, " ");
-  const generic = /^(?:codex|claude(?: code)?|opencode|cursor|powershell|pwsh|bash|shell|terminal)$/i;
+  const generic = /^(?:codex|claude(?: code)?|atlas(?:[ -]?(?:code|tui))?|opencode|cursor|powershell|pwsh|bash|shell|terminal)$/i;
   const text = title && !generic.test(title) ? title : "작업 중";
   const chars = Array.from(text);
   return chars.length > 10 ? chars.slice(0, 9).join("") + "…" : text;
+}
+// The same text uncut ("" when there is nothing to say: only the tool's own name): the MOSSES cards and the terminal window's head have the room for it.
+export function activityText(a) {
+  const title = String(a?.activity || a?.title || "").trim().replace(/\s+/g, " ");
+  return title && !/^(?:codex|claude(?: code)?|atlas(?:[ -]?(?:code|tui))?|opencode|cursor|powershell|pwsh|bash|shell|terminal)$/i.test(title) ? title : "";
 }
 
 export const dot = (color, size = 7) => div().size(size).rounded(size).bg(color).flex_none();

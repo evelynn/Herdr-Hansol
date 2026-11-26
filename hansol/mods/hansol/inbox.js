@@ -5,15 +5,15 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { closeOverlay, hc, props, setShared, shared } from "herdr";
 import { iconBtn } from "./ui.js";
-import { P, dot, ago, STATE, platformIcon, stateOf, blockedText } from "./common.js";
+import { RAD, P, dot, ago, STATE, platformIcon, stateOf, blockedText } from "./common.js";
 
 import { approvalDetailLines } from "./approve-view.js";
 import { inboxList, inboxFits, inboxHasMore, inboxWhat, inboxNeedsRead, inboxExtraH, reportName, reportModel, reportWhere, reportDupes, reportTag, shownRight } from "./approve.js"; // (pure, so the tests can load it without the App)
 
 const open = (a, tab) => { if (tab) setShared("hansol.tab", { id: a.id, tab, at: Date.now() }); setShared("hansol.pick", { state: a.status, id: a.id, at: Date.now() }); };
 
-const link = (id, label, fn, tone = {}) => div().id(id).flex_none().h(32).px(10).flex().items_center().rounded(8).border(1).border_color(tone.border ?? P.line).bg(tone.bg ?? P.paper)
-  .text_size(14).font_weight(600).text_color(tone.color ?? P.ink).cursor_pointer().hover((s) => s.bg("#2b3b50")).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(label);
+const link = (id, label, fn, tone = {}) => div().id(id).flex_none().h(32).px(10).flex().items_center().rounded(RAD(8)).border(1).border_color(tone.border ?? P.line).bg(tone.bg ?? P.paper)
+  .text_size(14).font_weight(600).text_color(tone.color ?? P.ink).cursor_pointer().hover((s) => s.bg(P.raised)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(label);
 
 // 14th D6: a report (報告あり) is a short row, 54px with the gap. Only a waiting card keeps the buttons (the big card).
 // 18th F5: two lines (name / one phrase) so the phrase has the width; the name is the person's own display name first. The room (or tab) is added after the name
@@ -21,7 +21,7 @@ const link = (id, label, fn, tone = {}) => div().id(id).flex_none().h(32).px(10)
 // 19th G3: the name is as wide as it is (cap 140 when a room follows, 200 alone) so the rest goes to the room; `tag` (the address) is given only to rows whose name and room both repeat (reportDupes).
 export function inboxRow(a, tag = "") {
   const st = stateOf(a), where = [reportWhere(a), reportModel(a)].filter(Boolean).join("・"); // 20th H6: the model (from the name's brackets) follows the room
-  return h_flex().id(`inbox-${a.id}`).w_full().flex_none().gap(8).px(12).py(3).items_center().rounded(10).bg("#203c36").border(1).border_color("#3b715b")
+  return h_flex().id(`inbox-${a.id}`).w_full().flex_none().gap(8).px(12).py(3).items_center().rounded(RAD(10)).bg("#203c36").border(1).border_color("#3b715b")
     .child(dot(st.color, 10)).child(platformIcon(a, 15))
     .child(v_flex().flex_1().min_w(0)
       .child(h_flex().h(20).gap(6).items_center().min_w(0)
@@ -48,13 +48,13 @@ export function inboxCard(part, a, tag = "") {
   // 26th M1: the person in the right window answers there; a second pair of buttons here only made people choose, so the card has none (33b U3: the 「右の窓に表示中」 mark alone says where).
   const btns = waiting && !shown ? part.approveButtons(a, { h: 36, idp: "inbox" }) : null;
   if (!waiting) return inboxRow(a, tag);
-  return v_flex().id(`inbox-${a.id}`).w_full().gap(6).px(12).py(10).rounded(10).bg(waiting ? "#453527" : "#203c36").border(1).border_color(waiting ? "#a87a42" : "#3b715b")
+  return v_flex().id(`inbox-${a.id}`).w_full().gap(6).px(12).py(10).rounded(RAD(10)).bg(waiting ? "#453527" : "#203c36").border(1).border_color(waiting ? "#a87a42" : "#3b715b")
     .child(h_flex().gap(8).items_center()
       .child(dot(st.color, 10)).child(platformIcon(a, 15))
       .child(div().flex_none().max_w(200).truncate().text_size(15).font_weight(700).text_color(P.ink).child(reportName(a))) // 20th H6: no model in brackets in the name
       .when(!!reportModel(a), (e) => e.child(div().flex_none().text_size(12).text_color(P.muted).child(reportModel(a))))
       .child(div().flex_1().min_w(0))
-      .when(shown, (e) => e.child(div().id(`inbox-shown-${a.id}`).flex_none().px(6).rounded(6).bg("#243d5d").text_size(12).font_weight(600).text_color(P.blue).child("오른쪽 창에 표시 중"))) // 19th G5
+      .when(shown, (e) => e.child(div().id(`inbox-shown-${a.id}`).flex_none().px(6).rounded(RAD(6)).bg(P.select).text_size(12).font_weight(600).text_color(P.blue).child("오른쪽 창에 표시 중"))) // 19th G5
       .child(div().flex_none().text_size(13).font_weight(600).text_color(st.color).child(`${st.label} ${ago(a.since)}`)))
     // 32b T3: when the dialog's own first line was read, it comes first and dark ("Create file（ファイルを作成） · bye.txt"); the raw "approve Write: <path>" line follows, small and pale and cut
     // to one line. Without it (not read yet) the raw line stays first as before (nothing to put in front).
