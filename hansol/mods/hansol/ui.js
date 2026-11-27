@@ -4,6 +4,7 @@ import { div } from "gpui-kit";
 import { h_flex, v_flex, Input, InputState } from "gpui-base";
 import { RAD, P } from "./common.js";
 import { icon } from "./icons.js";
+import { isMz, cutIconButton } from "./mz-ui.js";
 
 export * from "./ui-rules.js";
 import { RIGHT_HEAD, UI } from "./ui-rules.js";
@@ -12,6 +13,7 @@ import { RIGHT_HEAD, UI } from "./ui-rules.js";
 // A small icon button. opts: { size (box, 24), isize (picture, 14), color, red, disabled, active }. A disabled one does nothing (and is pale).
 export function iconBtn(id, name, fn, opts = {}) {
   const box = opts.size ?? 24, col = opts.disabled ? "#c3beb1" : opts.red ? "#d6455d" : opts.color ?? P.muted;
+  if (isMz() && !opts.disabled) return cutIconButton(id, box, box, icon(name, opts.isize ?? 14, opts.red ? "#f0a0ac" : opts.color ?? P.muted), opts.tip ? String(opts.tip) : null, fn, !!opts.active); // (MOSSES: a pressed thing has its corners cut)
   // 5th X7: opts.frame = a thin frame always on (the button looks pressable), a darker fill on hover (the "⋯" of the left list)
   const el = h_flex().id(id).flex_none().w(box).h(box).items_center().justify_center().rounded(RAD(6)).when(!!opts.active, (e) => e.bg(P.select)).when(!!opts.frame && !opts.disabled, (e) => e.border(1).border_color(P.line).bg("#253247"))
     .when(!!opts.tip, (e) => e.tooltip(String(opts.tip))) // ★107 W8: opts.tip = the pointer's tooltip (what the icon does)

@@ -7,6 +7,7 @@ import { h_flex, v_flex, v_virtual_list, Scrollbar, Input, InputState } from "gp
 import { exec, notify, openOverlay, props, readTextFile, run, setShared, shared } from "herdr";
 import { P } from "./common.js";
 import { C, mono, git, errText, gitOpenWin } from "./git-tree.js";
+import { NEON, NEON_FILL, cutRow, isMz } from "./mz-ui.js";
 import { statusArgs, parseStatus, stageArgs, unstageArgs, commitArgs, workDiffArgs, pushArgs, branchesArgs, parseBranches, switchArgs, canSwitch,
   remotesArgs, parseRemotes, remoteUrlArgs, remoteInfo, diffRows, parseListening, envMissing, packageScripts, ago } from "./git-rules.js";
 
@@ -196,6 +197,8 @@ export class GitWorkPart {
     const g = this.gw;
     return h_flex().id("git-tabs").flex_none().h(36).px(8).gap(4).items_center().bg(C.head).border_b(1).border_color(C.line)
       .children(TABS.map(([key, label]) => { const on = g.pane === key, text = key === "changes" && count ? `${label} ${count}` : label;
+        if (isMz()) return cutRow(h_flex().id(`git-tab-${key}`).flex_none().items_center().cursor_pointer().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.gitPane(key, cx); }),
+          26, 7, on ? NEON_FILL : "#00000000", on ? NEON : "#00000000", div().px(5).flex().items_center().text_size(12).font_weight(700).text_color(on ? NEON : C.dim).hover((s) => s.text_color("#ffffff")).child(text));
         return div().id(`git-tab-${key}`).flex_none().h(26).px(12).flex().items_center().rounded(6).text_size(12).font_weight(700).cursor_pointer()
           .bg(on ? P.blue : "#00000000").text_color(on ? "#ffffff" : C.dim).hover((s) => s.bg(on ? P.blue : C.hover))
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); this.gitPane(key, cx); }).child(text); }))

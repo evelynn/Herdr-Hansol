@@ -12,6 +12,7 @@ import { tabFor } from "./detail.js";
 import { headHeight } from "./ui-rules.js";
 import { fitScreenLines, stripTerminalFrame } from "./tool-lines.js";
 import { iconBtn } from "./ui.js";
+import { LINE, cutRow, isMz } from "./mz-ui.js";
 import { icon } from "./icons.js";
 import { endAgent, endQuestion, runAgentOps } from "./actions.js";
 import { screenLineKind } from "./screen-highlights.js";
@@ -182,7 +183,8 @@ export class ChatPart {
 
   chatView() {
     const p = props(), d = this.chat?.data, room = ROOM[p.source] ?? { title: p.source, color: P.muted };
-    const btn = (id, label, fn) => div().id(id).flex_none().px(9).py(4).rounded(RAD(5)).border(1).border_color(P.line)
+    const btn = (id, label, fn) => isMz() ? cutRow(h_flex().id(id).flex_none().items_center().cursor_pointer().on_click(fn), 24, 7, "#0a132399", LINE,
+      div().px(3).flex().items_center().text_size(11).text_color(P.ink).hover((s) => s.text_color("#ffffff")).child(label)) : div().id(id).flex_none().px(9).py(4).rounded(RAD(5)).border(1).border_color(P.line)
       .bg(P.white).text_size(11).text_color(P.ink).cursor_pointer().hover((s) => s.bg(P.raised)).on_click(fn).child(label);
     const head = h_flex().flex_none().h(46).px(14).gap(8).items_center().bg(P.paper).border_b(1).border_color(P.line)
       .child(badge(room.title, room.color, true))
@@ -517,7 +519,8 @@ export class ChatPart {
 
   // Role "confirm": the question before an agent is ended. Only "はい" calls the App.
   confirmView() {
-    const p = props(), btn = (id, label, fn, color, fill) => div().id(id).flex_none().px(16).py(8).rounded(RAD(8)).border(1).border_color(color).bg(fill ?? P.white)
+    const p = props(), btn = (id, label, fn, color, fill) => isMz() ? cutRow(h_flex().id(id).flex_none().items_center().cursor_pointer().on_click(fn), 34, 10, fill ?? "#0a132399", color,
+      div().px(8).flex().items_center().text_size(13).font_weight(700).text_color(fill ? "#ffffff" : color).hover((s) => s.opacity(0.85)).child(label)) : div().id(id).flex_none().px(16).py(8).rounded(RAD(8)).border(1).border_color(color).bg(fill ?? P.white)
       .text_size(13).font_weight(700).text_color(fill ? "#ffffff" : color).cursor_pointer().hover((s) => s.opacity(0.85)).on_click(fn).child(label);
     const yes = () => { if (p.action) this.confirmYes(p); else endAgent(run, { address: p.address, source: p.source }, true); closeOverlay(p.overlay); }; // ★61-1 room-close / stop: room.js
     return v_flex().id("confirm-root").size_full().p(18).gap(14).bg(P.paper).overflow_hidden() // ★95-7: a long question scrolls; the buttons stay

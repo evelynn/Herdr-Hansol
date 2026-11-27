@@ -183,3 +183,85 @@ export const hhmm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.
 // The boot lines (blink in one by one), original text.
 export const BOOT_LINES = (stars, units) => ["MOSSES OPERATING SYSTEM  V1.5", "HERDR CORE LINK ............ OK", `SCAN AGENT CLUSTER ......... ${stars} STARS / ${units} UNITS`, "MAIL SERVER ................ ONLINE", "WELCOME ABOARD."];
 export const BOOT_MS = 3000;
+
+// ---- 2026-11-27 the cluster in 3D (OVERVIEW): each work space a star at P = [X, Y, Z] (Y up, Z toward the viewer at yaw 0), not a grid.
+// A drag on the empty floor turns the whole cluster: yaw round Y; T = the tilt (the sine of the view's elevation, as the orbits use it).
+const hash01 = (s) => ([...String(s)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 1000) / 1000;
+/** Star i of n's home: spread by the golden angle over the screen at the usual view (free, no rows), its depth taken from its key. */
+export function clusterHome(i, n, key, T = 0.42) {
+  if (n <= 1) return [0, 0, 0];
+  const r = Math.sqrt((i + 0.5) / n), a = i * 2.39996 + 0.9, x = r * Math.cos(a), v = r * Math.sin(a) * 0.9;
+  const z = (hash01(key) * 2 - 1) * 0.7 * Math.sqrt(Math.max(0, 1 - x * x)), c = Math.sqrt(1 - T * T);
+  return [x, (z * T - v) / c, z];
+}
+/** P seen at yaw / T: h across, v down (screen), d toward the viewer; z: P's depth on the turned floor (kept when a star is moved). */
+export function clusterView(P, yaw, T) {
+  const [X, Y, Z] = P, c = Math.sqrt(1 - T * T), cs = Math.cos(yaw), sn = Math.sin(yaw), h = X * cs + Z * sn, z = -X * sn + Z * cs;
+  return { h, v: -Y * c + z * T, d: z * c + Y * T, z };
+}
+/** The star seen at (h, v) with floor depth z: clusterView's inverse. */
+export function clusterPoint(h, v, z, yaw, T) {
+  const c = Math.sqrt(1 - T * T), cs = Math.cos(yaw), sn = Math.sin(yaw);
+  return [h * cs - z * sn, (z * T - v) / c, h * sn + z * cs];
+}
+const fitOf = (Ps, T, sizes) => { // the spread's bounds do not change with yaw, so turning never zooms
+  const c = Math.sqrt(1 - T * T), r = Ps.map(([X, , Z]) => Math.hypot(X, Z));
+  return { rw: Math.max(1, ...sizes.map((z) => z[0])), rh: Math.max(1, ...sizes.map((z) => z[1])),
+    Bh: Math.max(1e-3, ...r), Bv: Math.max(1e-3, ...Ps.map((p, i) => Math.abs(p[1]) * c + r[i] * T)), Bd: Math.max(1e-3, ...Ps.map((p, i) => r[i] * c + Math.abs(p[1]) * T)) };
+};
+/** The rooms of stars Ps at yaw / T in a W x H scene. sizes[i] = [w, h]: what system i draws (its name, planet, orbits, name plates), at full size.
+ *  -> [{ x, y, w, h, f, d }]: top left and size, f = the scale (1; less only when the rooms cannot all be kept apart), d = depth (-1 far .. 1 near).
+ *  The content keeps its size: the stars' spread fits round it. Rooms that meet are pushed apart, then kept on the screen. */
+const CORE = 0.94; // only the rooms' empty rims (the orbits' far ends) may touch
+export function clusterRooms(Ps, yaw, T, W, H, sizes, GAP = 12) {
+  if (!Ps.length) return [];
+  const { rw, rh, Bh, Bv, Bd } = fitOf(Ps, T, sizes), base = Ps.map((P) => clusterView(P, yaw, T));
+  const keep = (o) => { o.cx = o.w >= W ? W / 2 : Math.max(o.w / 2, Math.min(W - o.w / 2, o.cx)); o.cy = o.h >= H ? H / 2 : Math.max(o.h / 2, Math.min(H - o.h / 2, o.cy)); };
+  let out = [];
+  for (let shrink = 1; shrink > 0.5; shrink *= 0.94) { // rooms that cannot all be pushed apart are made a little smaller, and pushed again
+    out = base.map((q, i) => ({ cx: W / 2 + (q.h / Bh) * (Math.max(0, W - rw) / 2), cy: H / 2 + (q.v / Bv) * (Math.max(0, H - rh) / 2), w: sizes[i][0] * shrink, h: sizes[i][1] * shrink, f: shrink, d: q.d / Bd }));
+    out.forEach(keep);
+    let moved = true;
+    for (let it = 0; it < 60 && moved; it++) {
+      moved = false;
+      for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+        const a = out[i], b = out[j], ox = ((a.w + b.w) / 2) * CORE + GAP - Math.abs(a.cx - b.cx), oy = ((a.h + b.h) / 2) * CORE + GAP - Math.abs(a.cy - b.cy);
+        if (ox <= 0.5 || oy <= 0.5) continue;
+        moved = true;
+        const fx = (a.w + b.w) * CORE + GAP <= W, fy = (a.h + b.h) * CORE + GAP <= H; // the shorter way apart, but not along an axis with no room for both
+        if (fx && (ox < oy || !fy)) { const s = a.cx <= b.cx ? -1 : 1; a.cx += (s * ox) / 2; b.cx -= (s * ox) / 2; }
+        else { const s = a.cy <= b.cy ? -1 : 1; a.cy += (s * oy) / 2; b.cy -= (s * oy) / 2; }
+      }
+      out.forEach(keep);
+    }
+    if (!moved) break;
+  }
+  return out.map((o) => ({ x: o.cx - o.w / 2, y: o.cy - o.h / 2, w: o.w, h: o.h, f: o.f, d: o.d }));
+}
+/** Star i moved so its room's centre is at (rcx, rcy) on the screen (its depth kept), held inside the spread's present bounds. */
+export function clusterDrop(Ps, i, rcx, rcy, yaw, T, W, H, sizes) {
+  const { rw, rh, Bh, Bv } = fitOf(Ps, T, sizes), c = Math.sqrt(1 - T * T), z = clusterView(Ps[i], yaw, T).z;
+  const h = ((rcx - W / 2) / Math.max(1, (W - rw) / 2)) * Bh, v = ((rcy - H / 2) / Math.max(1, (H - rh) / 2)) * Bv;
+  let [X, Y, Z] = clusterPoint(Math.max(-Bh, Math.min(Bh, h)), v, z, yaw, T);
+  const r = Math.hypot(X, Z); if (r > Bh) { X *= Bh / r; Z *= Bh / r; }
+  const lim = Math.max(0, (Bv - Math.min(Bh, r) * T) / c); Y = Math.max(-lim, Math.min(lim, Y));
+  return [X, Y, Z];
+}
+
+// ---- 2026-11-27 an agent's work history (shared "hansol.mzHist": [{ at, text, done }], oldest first) without repeats.
+// Two texts are the same work when equal or one is the other cut short (the collector cuts long texts and adds "…").
+const workKey = (t) => String(t ?? "").replace(/…$/, "").replace(/\s+/g, " ").trim();
+export const sameWork = (a, b) => { const x = workKey(a), y = workKey(b); return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 4 && (x.startsWith(y) || y.startsWith(x)))); };
+/** h with text as its newest entry: an earlier entry of the same work moves to the end (the longer text kept), so the list holds max different works. */
+export function pushWork(h, text, at, max = 8) {
+  const i = h.findIndex((e) => sameWork(e.text, text)), prev = i >= 0 ? h.splice(i, 1)[0] : null;
+  h.push({ at, text: prev && workKey(prev.text).length > workKey(text).length ? prev.text : text });
+  while (h.length > max) h.shift();
+  return h;
+}
+/** The n latest different works before the current one (newest first). */
+export function pastWork(h, task, n) {
+  const out = [];
+  for (let i = (h ?? []).length - 1; i >= 0 && out.length < n; i--) { const e = h[i]; if (!sameWork(e.text, task) && !out.some((o) => sameWork(o.text, e.text))) out.push(e); }
+  return out;
+}

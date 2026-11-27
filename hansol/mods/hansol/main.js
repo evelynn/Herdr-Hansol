@@ -15,7 +15,7 @@ import { ICON_DIR, icon } from "./icons.js";
 import { UI, LOGO_W, LOGO_H, LOGO_HEAD, CARET, showCaret, chipPeople, chipAction, chipListHeight, CHIP_LIST, clipName, NAME_EM_FULL } from "./ui-rules.js";
 import { OfficePart, GUILD, MEADOW, MOSSES } from "./office.js";
 import { MossesPart } from "./mosses.js";
-import { terminalWindowHead, terminalWindowGrip, terminalResizeSurface } from "./terminal-window.js";
+import { terminalWindowHead, terminalWindowGrip, terminalWindowEdge, terminalResizeSurface } from "./terminal-window.js";
 import { ChatPart } from "./chat.js";
 import { RegionPart } from "./region.js";
 import { DetailPart } from "./detail.js";
@@ -51,7 +51,7 @@ class AgentHud extends View {
     if (role === "rchat") return this.initRegionChat(cx); // ★103-3 (region.js; rhead / rtree take the default path below)
     if (role === "launch") return this.initLaunch(cx);
     if (role === "room-new") return this.initRoomNew(cx);
-    if (role === "terminal-window-head" || role === "terminal-window-grip" || role === "terminal-resize-surface") return;
+    if (role === "terminal-window-head" || role === "terminal-window-grip" || role === "terminal-window-edge" || role === "terminal-resize-surface") return;
     if (role === "chat" || role === "chat-body" || role === "chat-input" || role === "chat-approve") return this.initChat(cx);
     if (role === "agent-menu") return;
     if (role === "tui-prompt") return this.initTuiPrompt(cx); // ★74-3 (panel.js)
@@ -244,6 +244,7 @@ class AgentHud extends View {
     const role = props()?.role ?? "board";
     if (role === "terminal-window-head") return terminalWindowHead();
     if (role === "terminal-window-grip") return terminalWindowGrip();
+    if (role === "terminal-window-edge") return terminalWindowEdge();
     if (role === "terminal-resize-surface") return terminalResizeSurface(this);
     if (role === "pane") return this.paneHeader();
     if (role === "chat") return this.chatView();

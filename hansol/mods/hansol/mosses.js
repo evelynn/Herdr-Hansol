@@ -14,16 +14,16 @@ import { hc, setShared, shared, notify, window as herdrWindow } from "herdr";
 import { P, stateOf, blockedText, platform, STATE, activityText } from "./common.js";
 import { answerOnce, answerLocked, KEY_NOT_SENT, seenNext, approvalPlan } from "./approve.js";
 import { openTerminalWindow } from "./terminal-window.js";
+import { NEON, RULE, R_OUT, R_IN, WORK, textW, cutBox, cutRow, cutPlate, cutTag } from "./mz-ui.js";
 import { icon } from "./icons.js";
-import { starGroups, mailList, newsSince, planetsFor, clamp01, easeOut, orderSystems, moveOrder, warpLines, warpCurve, ringsAr, warpVeil } from "./mosses-model.js";
+import { starGroups, mailList, newsSince, planetsFor, clamp01, easeOut, orderSystems, moveOrder, warpLines, warpCurve, ringsAr, warpVeil, clusterHome, clusterRooms, clusterDrop, pushWork, pastWork, sameWork } from "./mosses-model.js";
 
 const A = "mods/hansol/mosses";
 const KO = "Malgun Gothic", MONO = "Consolas";
-const RADIUS = 8, TICK_MS = 40, SLOW_MS = 5000, MOVE_MS = 1500, BOOT_MS = 2400, IN_MS = 500, LOCK_MS = 380, TILT = 0.42;
+const TICK_MS = 40, SLOW_MS = 5000, MOVE_MS = 1500, BOOT_MS = 2400, IN_MS = 500, LOCK_MS = 380, TILT = 0.42;
 // 2026-11-27 warp (a press on a planet), an agent's arrival / departure, the turning of the radar plane (a drag on the empty floor)
 const WARP_MS = 1100, WARP_SWITCH = 550, FX_MS = 900, TILT_MIN = 0.12, TILT_MAX = 0.9, ORBIT_MS = 33;
 // 2026-11-26 the colours of the concept picture (navy glass, a cyan accent, pale thin lines): the same set as P of common.js, so the windows match
-const WORK = "#3ee6d2"; // 2026-11-27 working stands out from idle: brighter, moving; idle is dimmed
 // Around a moon each mark has its own lane (px past the moon's edge), so they never cross (2026-11-27):
 // the state ring (ask pulse included), working or shell arcs (never both: one state), the selected ring, the sub-agents' dots.
 const MENU_W = 236, MENU_H = 38; // the planet menu's buttons
@@ -35,7 +35,7 @@ const sc = (key) => (key === "working" ? WORK : (STATE[key] ?? STATE.idle).color
 // A card's state bar: working = wider and breathing, idle = faint.
 const stateBar = (key) => div().flex_none().w(key === "working" ? 4 : 3).h(40).rounded(1).bg(sc(key) + (key === "idle" ? "66" : "")).when(key === "working", (e) => e.loop("opacity", { from: 0.35, to: 1, period: 1100 }));
 const CARD_BG = { blocked: "#2a1c0ccc", working: "#0b2b2ee6" }, CARD_EDGE = { blocked: STATE.blocked.color + "aa", working: WORK + "66" };
-const EDGE = "#56d3ea", GLASS = "#0a1323d9", GLASS_HEAD = "#101d33e6", RULE = "#8fb4d833", ROSE = "#f0788a", PALE = "#a9c4e4";
+const EDGE = NEON, GLASS = "#0a1323d9", GLASS_HEAD = "#101d33e6", ROSE = "#f0788a", PALE = "#a9c4e4";
 const pad2 = (n) => String(n).padStart(2, "0");
 const hms = (ms) => { const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
 const cap = (t, c) => div().flex_none().whitespace_nowrap().text_size(10.5).font_weight(500).text_color(c ?? P.muted).child(String(t));
@@ -52,11 +52,6 @@ function ellipses(list, dash) {
 }
 
 // The one button shape: 26 px high, two opposite corners cut at 45 degrees (a path: fill + a 1 px line). kind: "line" | "ok" (amber, filled) | "no" (rose line).
-const textW = (s, size) => [...String(s)].reduce((n, ch) => n + (ch.charCodeAt(0) > 0x2e80 ? size : ch === " " ? size * 0.32 : size * 0.6), 0);
-const cutBox = (w, h, c) => [[c, 0.5], [w - 0.5, 0.5], [w - 0.5, h - c], [w - c, h - 0.5], [0.5, h - 0.5], [0.5, c]]; // two opposite corners cut (top left, bottom right): a sharp, slanted plate
-const wedge = (h, c, fill, line, right) => { const pts = right ? [[0, 0.5], [c - 0.5, 0.5], [c - 0.5, h - c], [0, h - 0.5]] : [[c, 0.5], [0.5, c], [0.5, h - 0.5], [c, h - 0.5]], at = (e) => e.absolute().left(0).top(0).w(c).h(h);
-  return div().relative().flex_none().w(c).h(h).child(at(paint(PathBuilder.fill().add_polygon(pts, true), fill))).child(at(paint(PathBuilder.stroke(1).add_polygon(pts, false), line))); };
-const cutRow = (el, h, c, fill, line, mid) => el.child(wedge(h, c, fill, line, false)).child(mid.flex_none().h(h).bg(fill).border_t(1).border_b(1).border_color(line)).child(wedge(h, c, fill, line, true));
 function button(id, label, kind, press) {
   const amber = STATE.blocked.color, k = { line: ["#0f1c30d0", EDGE + "aa", "#e8f0fa", EDGE + "2e"], ok: [amber, "#ffd9a8", "#140c00", "#ffb45e"], no: ["#2a0c1cb0", ROSE + "bb", ROSE, ROSE + "30"] }[kind];
   const w = Math.ceil(textW(label, 12) + 34), h = 26, c = 10, pts = cutBox(w, h, c);
@@ -68,7 +63,7 @@ function button(id, label, kind, press) {
 }
 // A plate of translucent glass: a 1 px luminous line, a brighter title strip (a short bar, the title, a note on the right). A column; add the body to it.
 function plate(title, note, accent) {
-  return v_flex().w_full().bg(GLASS).border(1).border_color(accent ? accent + "88" : "#8fb4d83d").rounded(RADIUS).overflow_hidden()
+  return v_flex().w_full().bg(GLASS).border(1).border_color(accent ? accent + "88" : "#8fb4d83d").rounded(R_OUT).overflow_hidden()
     .child(h_flex().flex_none().h(28).px(12).gap(8).items_center().border_b(1).border_color(RULE).bg(GLASS_HEAD)
       .child(div().flex_none().w(2).h(10).bg(accent ?? EDGE)).child(cap(title, accent ?? "#dcecff")).child(div().flex_1()).child(cap(note ?? "")));
 }
@@ -85,21 +80,51 @@ function corners(el, w, h, colour, L = 14) {
 // So the moons, their state rings, their trails and the lines to their name plates are paths, a few for all the moons together (the cost does not grow with the element count);
 // the name plates (text) stand still on the floor. The floor's draw writes what there is to show into SCENE; this view reads it.
 // yaw / tilt: the radar plane as turned by a drag (mzDragMove); ghosts: moons of agents just gone (their last place, fading out); last: id -> the moon's place drawn last.
-const SCENE = { on: false, w: 0, h: 0, bodies: [], hot: null, yaw: 0, tilt: TILT, ghosts: [], last: new Map(), fxUntil: 0 };
+// A system's room (top left ox, oy, size vw x vh) -> its planet's centre and radius, its orbits' reach and its name plates' column (the floor and, while the cluster turns, the moons' view).
+function roomGeom(ox, oy, vw, vh, big) {
+  const lw = Math.max(170, Math.min(big ? 340 : 250, vw * (big ? 0.27 : 0.35) - 14)), lx0 = ox + vw - lw - 8;
+  const cx0 = ox + (lx0 - ox) * 0.5, cy0 = oy + vh * 0.5 + (big ? 0 : 18);
+  const A1 = (lx0 - ox) * 0.5 - 26, A2 = vh * 0.5 - (big ? 40 : 58), aRef = Math.max(60, Math.min(A1, A2 / TILT)); // the planet sized at the usual tilt: turning never resizes it
+  const R = Math.max(20, Math.min(big ? 130 : 54, aRef * (big ? 0.34 : 0.3)));
+  return { lw, lx0, cx0, cy0, A1, A2, R, IMG: R * 3.2 };
+}
+// 2026-11-27 a system in the cluster at full size (it does not shrink with the screen or the number of systems): the name on top, the planet and
+// its orbits, the name plates beside them. clusterSize = its box [w, h]; clusterGeom = the parts' places in a box at (ox, oy), scaled by k (1 unless crowded).
+const CL = { R: 50, A1: 168, A2: 84, LW: 250, LH: 50, PLATES: 4, NAME: 46, GAP: 22 };
+const clusterSize = (np) => { const ph = Math.min(np, CL.PLATES) * CL.LH + (np > CL.PLATES ? 20 : 0), body = Math.max(CL.A2 * 2, CL.R * 3.2, ph);
+  return [CL.A1 * 2 + CL.GAP + CL.LW + 12, CL.NAME + body + 10]; };
+function clusterGeom(ox, oy, np, k = 1) {
+  const ph = Math.min(np, CL.PLATES) * CL.LH, body = Math.max(CL.A2 * 2, CL.R * 3.2, ph + (np > CL.PLATES ? 20 : 0)) * k;
+  const cx0 = ox + (6 + CL.A1) * k, cy0 = oy + CL.NAME * k + body / 2, lx0 = cx0 + (CL.A1 + CL.GAP) * k;
+  return { k, cx0, cy0, lx0, lw: CL.LW * k, A1: CL.A1 * k, A2: CL.A2 * k, R: CL.R * k, IMG: CL.R * 3.2 * k, ply: cy0 - ((ph + (np > CL.PLATES ? 20 : 0)) * k) / 2, nx: ox + 6 * k, ny: oy };
+}
+// The cluster's camera (2026-11-27): the view's direction is fixed (no turning); a drag on the empty floor moves the view, the wheel zooms round the pointer.
+// The rooms are laid out at zoom 1 (clusterRooms), then the camera scales them about the scene's middle and shifts them.
+const ZOOM_MIN = 0.6, ZOOM_MAX = 1.8;
+const camRooms = (rooms, W, H, cam) => rooms.map((r) => ({ ...r, x: W / 2 + (r.x - W / 2) * cam.z + cam.x, y: H / 2 + (r.y - H / 2) * cam.z + cam.y, w: r.w * cam.z, h: r.h * cam.z, f: r.f * cam.z }));
+const PLACE_KEY = "hansol.mzPlace"; // 2026-11-27 where the person put each work space in the cluster ({ key: [X, Y, Z] }, kept between starts)
+const SCENE = { on: false, w: 0, h: 0, bodies: [], hot: null, yaw: 0, tilt: TILT, cam: { z: 1, x: 0, y: 0 }, ghosts: [], last: new Map(), fxUntil: 0 };
 const circle = (x, y, r, n = 18) => { const pts = []; for (let i = 0; i < n; i++) { const q = (i / n) * Math.PI * 2; pts.push([x + r * Math.cos(q), y + r * Math.sin(q)]); } return pts; };
 const alpha = (v) => Math.round(clamp01(v) * 255).toString(16).padStart(2, "0");
 class MzOrbit extends View {
   // about 30 frames a second (the orbits are slow); 60 while something arrives, leaves or the plane is turned
   init(_p, cx) { let last = 0; cx.timer.every(16, (c) => { const t = Date.now(); if (!SCENE.on || herdrWindow()?.visible === false || t - last < (SCENE.fxUntil > t ? 15 : ORBIT_MS)) return; last = t; c.notify(); }); }
   render() {
-    const W = SCENE.w, H = SCENE.h, el = div().absolute().left(0).top(0).w(W).h(H);
+    const W = SCENE.w, H = SCENE.h, el = div().absolute().left(0).top(0).w(W).h(H).overflow_hidden();
     const ms = Date.now(); SCENE.ghosts = SCENE.ghosts.filter((g) => ms - g.at < FX_MS);
     if (!SCENE.on || (!SCENE.bodies.length && !SCENE.ghosts.length && !SCENE.orbits?.length)) return el;
     SCENE.n = (SCENE.n ?? 0) + 1;
     const now = ms / 1000, T = SCENE.tilt, put = (b, colour) => el.child(paint(b, colour).absolute().left(0).top(0).w(W).h(H));
-    const ARS = (SCENE.orbits ?? []).map((o) => ringsAr(o.A1, o.A2, o.R, o.nr, T));
+    let OR = SCENE.orbits ?? [];
+    if (SCENE.spin && SCENE.cluster) { // the view is being moved: each system's place follows the camera every frame, and its planet is drawn here (the floor leaves it out), far ones first
+      const c = SCENE.cluster, rooms = camRooms(c.base, c.w, c.h, SCENE.cam);
+      OR = OR.map((o) => { const r = rooms[o.i]; if (!r) return o; const g = clusterGeom(r.x, r.y, o.np, r.f); return { ...o, cx: g.cx0, cy: g.cy0, R: g.R, A1: g.A1, A2: g.A2, IMG: g.IMG, d: r.d }; });
+      for (const o of [...OR].sort((p, q) => (p.d ?? 0) - (q.d ?? 0))) {
+        el.child(image(`${A}/glow-blue.png`).absolute().left(o.cx - o.R * 2.6).top(o.cy - o.R * 2.6).w(o.R * 5.2).h(o.R * 5.2).opacity(0.28));
+        el.child(image(o.src).absolute().left(o.cx - o.IMG / 2).top(o.cy - o.IMG / 2).w(o.IMG).h(o.IMG).opacity(0.78 + 0.11 * ((o.d ?? 0) + 1))); } }
+    const ARS = OR.map((o) => ringsAr(o.A1, o.A2, o.R, o.nr, T));
     { const lines = new Map(), add = (key, pts) => { if (pts.length > 1) lines.set(key, (lines.get(key) ?? PathBuilder.stroke(1)).add_polygon(pts, false)); };
-      (SCENE.orbits ?? []).forEach((o, i) => ARS[i].forEach((a) => { let run = [], front = []; // the far half fainter and hidden behind the planet's disc, the near half over it
+      OR.forEach((o, i) => ARS[i].forEach((a) => { let run = [], front = []; // the far half fainter and hidden behind the planet's disc, the near half over it
         for (let j = 0; j <= 48; j++) { const q = Math.PI + (j / 48) * Math.PI, px = o.cx + a * Math.cos(q), py = o.cy + a * T * Math.sin(q); if (Math.hypot(px - o.cx, py - o.cy) < o.R - 1) { add(o.colour + "3c", run); run = []; } else run.push([px, py]); }
         add(o.colour + "3c", run);
         for (let j = 0; j <= 48; j++) { const q = (j / 48) * Math.PI; front.push([o.cx + a * Math.cos(q), o.cy + a * T * Math.sin(q)]); }
@@ -110,6 +135,7 @@ class MzOrbit extends View {
     const trail = [PathBuilder.stroke(1.6), PathBuilder.stroke(1.4), PathBuilder.stroke(1.2)], used = [0, 0, 0], rings = new Map(), hits = [];
     const fx = (SCENE.fx ?? 0) > ms, B = SCENE.bodies;
     for (const b of SCENE.bodies) {
+      { const o = OR[b.si]; if (o) { b.cx = o.cx; b.cy = o.cy; b.R = o.R; } }
       b.ar = ARS[b.si]?.[b.k] ?? b.R * 2;
       const q = b.phase + SCENE.yaw + (now / b.period) * Math.PI * 2, s = Math.sin(q), x = b.cx + b.ar * Math.cos(q), y = b.cy + b.ar * T * s;
       const born = b.born ? clamp01((ms - b.born) / FX_MS) : 1, grow = born < 1 ? easeOut(born / 0.6) * (1 + 0.3 * Math.sin(Math.PI * clamp01(born / 0.8))) : 1; // arriving: grows from a point, overshoots a little
@@ -119,7 +145,7 @@ class MzOrbit extends View {
       if (born >= 0.5) for (let k = 0; k < 3; k++) { const pts = []; // the trail: three pieces along the orbit behind the moon, each fainter
         for (let i = 0; i <= 5; i++) { const a = q - (k * 5 + i) * 0.045, sn = Math.sin(a), px = b.cx + b.ar * Math.cos(a), py = b.cy + b.ar * T * sn; if (!under(px, py, sn)) pts.push([px, py]); }
         if (pts.length > 1) { trail[k] = trail[k].add_polygon(pts, false); used[k]++; } }
-      { const ex = b.lx - 28, runs = [[[b.lx, b.ly], [ex, b.ly]]]; let run = runs[0];
+      if (!SCENE.spin) { const ex = b.lx - 28, runs = [[[b.lx, b.ly], [ex, b.ly]]]; let run = runs[0]; // (while the view moves the plates are hidden: no lines to them)
         for (let i = 1; i <= 14; i++) { const px = ex + ((x - ex) * i) / 14, py = b.ly + ((y - b.ly) * i) / 14;
           if (s < 0 && Math.hypot(px - b.cx, py - b.cy) < b.R + 4) run = null; else { if (!run) { run = []; runs.push(run); } run.push([px, py]); } }
         const isHot = SCENE.hot === b.a.id;
@@ -235,7 +261,13 @@ export class MossesPart {
   mzBusy(ms) { this.mz.busyUntil = Math.max(this.mz.busyUntil, Date.now() + ms); }
   mzLog(text, colour) { const m = this.mz; m.log.push({ at: Date.now(), text: String(text), colour }); if (m.log.length > 40) m.log.shift(); }
   // One press on a satellite: it is locked and its channel opens (an App agent's terminal window; anyone else's conversation).
+  /** The agent the floor marks: the chosen one, while its terminal window is open (2026-11-28: a closed window left its moon marked, like a hover). */
+  mzLit(list, sel) {
+    const a = sel && list.find((x) => x.id === sel);
+    return a && !(a.source === "app" && a.address && !(shared("hansol.terminalWindows") ?? {})[a.address]) ? sel : null;
+  }
   mzOpen(a, cx) {
+    SCENE.hot = null; // the window opens over the moon: its pointer-leave never comes
     this.selId = a.id; this.panel = null; this.open = false; this.termPick = null;
     setShared("hansol.sel", a.id);
     if (a.source === "app" && a.address && !this.demo?.()) openTerminalWindow(a.address, a.name || a.title || a.address); else this.openChat?.(a);
@@ -272,15 +304,17 @@ export class MossesPart {
   // The view is shared ("hansol.mzView": { key }) because the band (its own copy of this class) shows and changes it too.
   // 2026-11-27 a planet's right-press menu (RADAR: a callout tied to the planet; BOARD: the column head's planet). Later features add an item in mzMenuItems.
   mzMenuItems(s) { // one item per feature; a feature with more to it opens its own window (Git: changes, remote and tools are sides of the Git window)
-    return [["git", "GIT", "커밋 그래프 · 변경, 원격, 도구는 Git 창에서", (cx) => this.gitOpenFor(s.units, s.title, cx)]];
+    return [["git", "GIT", "커밋 그래프 · 변경, 원격, 도구는 Git 창에서", (cx) => this.gitOpenFor(s.units, s.title, cx)],
+      ["folder", "작업 폴더 열기", "탐색기로 작업 공간 폴더 열기", (cx) => this.folderOpenFor(s.units, s.title, cx)]];
   }
   // The menu's rows [{ el, h, btn }]: the system's name, then per section a small head and its buttons (each button gets a stub line from the spine).
   mzMenuRows(id, s, done) {
-    const btn = (k, label, sub, act) => h_flex().id(`${id}-${k}`).w(MENU_W).h(MENU_H).px(10).gap(8).items_center().rounded(3).bg("#0a1626ee").border(1).border_color(EDGE + "55").cursor_pointer()
-      .hover((h) => h.bg("#12304af5").border_color(EDGE))
+    const btn = (k, label, sub, act) => cutPlate(MENU_W, MENU_H, 9, "#0a1626ee", EDGE + "55").id(`${id}-${k}`).cursor_pointer()
       .on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); done(cx); act(cx); }) // (on the press: a popover may close before a click completes)
-      .child(div().flex_none().w(2).h(18).bg(EDGE + "aa"))
-      .child(v_flex().min_w(0).gap(1).child(div().truncate().text_size(12.5).font_family(KO).font_weight(600).text_color("#f2f7fd").child(label)).child(div().truncate().text_size(10).font_family(KO).text_color(P.muted).child(sub)));
+      .child(div().absolute().left(0).top(0).w(MENU_W).h(MENU_H).opacity(0).hover((h) => h.opacity(1)).child(cutPlate(MENU_W, MENU_H, 9, EDGE + "1c", EDGE)))
+      .child(h_flex().absolute().left(0).top(0).w(MENU_W).h(MENU_H).px(12).gap(8).items_center()
+        .child(div().flex_none().w(2).h(18).bg(EDGE + "aa"))
+        .child(v_flex().min_w(0).gap(1).child(div().truncate().text_size(12.5).font_family(KO).font_weight(600).text_color("#f2f7fd").child(label)).child(div().truncate().text_size(10).font_family(KO).text_color(P.muted).child(sub))));
     const rows = [{ h: 22, el: h_flex().w(MENU_W).h(22).items_center().gap(7).child(div().text_size(9).text_color(EDGE).child("◆")).child(div().truncate().text_size(12.5).font_family(KO).font_weight(600).text_color("#f2f7fd").child(String(s.title))) }];
     for (const [k, label, sub, act] of this.mzMenuItems(s)) rows.push({ h: MENU_H, btn: true, el: btn(k, label, sub, act) });
     return rows;
@@ -295,7 +329,7 @@ export class MossesPart {
     const ax = cx0 + R * Math.cos(q), ay = cy0 + R * Math.sin(q), ex = ax + sgn * 26, ey = ay - 26, sx = ex + sgn * 22, bx = right ? sx + 14 : sx - 14 - MENU_W;
     const top = Math.max(6, Math.min(h - H2 - 6, ey - 30));
     let y = top, line = PathBuilder.stroke(1.2).add_polygon([[ax, ay], [ex, ey], [sx, ey]], false), lo = ey, hi = ey;
-    const box = v_flex().absolute().left(bx - 8).top(top - 8).p(8).gap(GAP).rounded(6).bg("#07111ffa").border(1).border_color(EDGE + "55").shadow_lg(); // (solid: nothing under it shows through)
+    const box = v_flex().absolute().left(bx - 8).top(top - 8).p(8).gap(GAP).rounded(R_OUT).bg("#07111ffa").border(1).border_color(EDGE + "55").shadow_lg(); // (solid: nothing under it shows through)
     for (const r of rows) { if (r.btn) { const my = y + r.h / 2; line = line.add_polygon(right ? [[sx, my], [bx, my]] : [[bx + MENU_W, my], [sx, my]], false); lo = Math.min(lo, my); hi = Math.max(hi, my); } box.child(r.el); y += r.h + GAP; }
     line = line.add_polygon([[sx, lo], [sx, hi]], false);
     el.child(paint(PathBuilder.stroke(1).dash_array([3, 3]).add_polygon(circle(cx0, cy0, R + 6, 48), true), EDGE + "66").absolute().left(0).top(0).w(w).h(h)); // the chosen planet
@@ -310,7 +344,7 @@ export class MossesPart {
     const rows = this.mzMenuRows(id, s, done);
     return Popover.new(id).mouse_button("right").anchor("top_left").trigger(trigger)
       .open(!!open).on_open_change((o, cx) => { this.mzMenuOpen = o ? { key: s.key, at: Date.now(), board: true } : null; cx.notify(); })
-      .content(div().ml(12).mt(4).p(8).rounded(6).bg("#07111ffa").border(1).border_color(EDGE + "55").shadow_lg() // (solid: the cards under it do not show through)
+      .content(div().ml(12).mt(4).p(8).rounded(R_OUT).bg("#07111ffa").border(1).border_color(EDGE + "55").shadow_lg() // (solid: the cards under it do not show through)
         .child(v_flex().pl(14).gap(5).border_l(1).border_color(EDGE + "cc")
           .children(rows.map((r) => r.btn ? h_flex().items_center().ml(-14).child(div().w(14).h(1).bg(EDGE + "cc")).child(r.el) : r.el))));
   }
@@ -319,6 +353,24 @@ export class MossesPart {
   mzWarpStart(key, x, y, look = null) { if (Date.now() - WARP.at < WARP_MS * WARP.slow) return false; Object.assign(WARP, { at: Date.now(), x, y, inward: key == null, look, slow: WARP.nextSlow || 1, nextSlow: 0 }); return true; } // look: { src, size } the planet dived into / left
   mzWarpTo(key, x, y, cx, look = null) { if (this.mzWarpStart(key, x, y, look)) cx.timer.after(WARP_SWITCH * WARP.slow, () => this.mzEnter(key)); }
 
+  // Each shown system's star: where the person put it (PLACE_KEY), else its home in the spread (clusterHome).
+  mzPlaces(shown) {
+    const m = this.mz;
+    if (!m.place) { try { m.place = JSON.parse(localStorage.getItem(PLACE_KEY) ?? "{}") ?? {}; } catch { m.place = {}; } }
+    return shown.map((s, i) => { const p = m.place[s.key]; return Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? p : clusterHome(i, shown.length, s.key); });
+  }
+  // 자동 정렬: every work space back to its place in the automatic spread (clusterHome), the view back to 100%.
+  mzAutoArrange(cx) {
+    const m = this.mz; m.place = {}; try { localStorage.setItem(PLACE_KEY, "{}"); } catch {}
+    Object.assign(SCENE.cam, { z: 1, x: 0, y: 0 }); this.mzLog("작업 공간 자동 정렬"); cx.notify();
+  }
+  // The wheel over the cluster zooms round the pointer (the point under it stays put).
+  mzZoom(e, cx) {
+    const m = this.mz, c = m?.cl, p = e?.local_position, dy = Number(e?.delta?.y) || 0; if (!c || m.viewKey != null || !p || !dy) return;
+    const cam = SCENE.cam, z1 = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.z * Math.exp(dy * 0.002))); if (z1 === cam.z) return;
+    const px = p.x - c.x - c.w / 2, py = p.y - c.y - c.h / 2, wx = (px - cam.x) / cam.z, wy = (py - cam.y) / cam.z;
+    Object.assign(cam, { z: z1, x: px - wx * z1, y: py - wy * z1 }); cx.notify();
+  }
   // ---- dragging on the floor: the empty floor turns the radar plane (left / right: round, up / down: tilt); a planet in the cluster is moved to another place.
   mzDragMove(e, cx) {
     const m = this.mz, p = e?.local_position, d = m?.pdrag ?? m?.rdrag; if (!d || !p) return;
@@ -326,8 +378,8 @@ export class MossesPart {
     const dx = p.x - d.x, dy = p.y - d.y;
     if (!d.on && Math.hypot(dx, dy) < 5) return;
     const first = !d.on; d.on = true; SCENE.fxUntil = Date.now() + 300; // (the moons' view runs at 60 a second; the floor is redrawn only when what it shows changes)
-    if (d === m.pdrag) { d.px = p.x; d.py = p.y; const g = m.grid, cell = g ? `${Math.floor((p.x - g.x) / g.cw)},${Math.floor((p.y - g.y) / g.ch)}` : "";
-      if (first || cell !== d.cell) { d.cell = cell; cx.notify(); } return; } // the target cell's frame and the faded planet
+    if (d === m.pdrag) { d.px = p.x; d.py = p.y; if (first) cx.notify(); return; } // the faded planet left behind (the one under the pointer is the moons' view's)
+    if (m.viewKey == null) { SCENE.cam.x = d.cam.x + dx; SCENE.cam.y = d.cam.y + dy; if (first) cx.notify(); return; } // the cluster: the view moves (the floor hides the plates once; the moons' view follows)
     SCENE.tilt = Math.max(TILT_MIN, Math.min(TILT_MAX, d.tilt + dy * 0.003));
     SCENE.yaw = d.yaw + dx * 0.008;
     if (first) cx.notify(); // the "시점 초기화" button
@@ -335,9 +387,11 @@ export class MossesPart {
   mzDragEnd(cx) {
     const m = this.mz, pd = m?.pdrag, rd = m?.rdrag; if (!pd && !rd) return;
     m.pdrag = m.rdrag = null;
-    if (pd?.on && m.grid && pd.px != null) { const g = m.grid; // where it was let go: the cell under the pointer
-      const col = Math.max(0, Math.min(g.cols - 1, Math.floor((pd.px - g.x) / g.cw))), row = Math.max(0, Math.floor((pd.py - g.y) / g.ch)), to = Math.min(g.keys.length - 1, row * g.cols + col);
-      if (to !== pd.i) { setShared("hansol.mzOrder", moveOrder(g.keys, pd.i, to)); this.mzLog(`작업 공간 위치 변경 · ${pd.title}`); } }
+    if (pd?.on && m.cl && pd.px != null) { const c = m.cl, i = c.keys.indexOf(pd.key), off = c.off.get(pd.key) ?? [0, 0], cam = SCENE.cam; // where it was let go: the planet's new place (its depth kept), saved
+      const wx = c.w / 2 + (pd.px - c.x - c.w / 2 - cam.x) / cam.z, wy = c.h / 2 + (pd.py - c.y - c.h / 2 - cam.y) / cam.z; // the pointer on the layout at zoom 1
+      if (i >= 0) { m.place = { ...(m.place ?? {}), [pd.key]: clusterDrop(c.Ps, i, wx - off[0] / cam.z, wy - off[1] / cam.z, 0, TILT, c.w, c.h, c.sizes) };
+        try { localStorage.setItem(PLACE_KEY, JSON.stringify(m.place)); } catch {}
+        this.mzLog(`작업 공간 위치 변경 · ${pd.title}`); } }
     if (pd?.on || rd?.on) this.dragAt = Date.now(); // (office.js justDragged: the click that ends a drag opens nothing)
     cx.notify();
   }
@@ -364,7 +418,7 @@ export class MossesPart {
     const iconTool = (id, name, tip, colour) => cutRow(h_flex().id(id).flex_none().items_center().cursor_pointer().tooltip(tip), 28, 9, "#0a132399", "#8fb4d84d",
       h_flex().w(22).h(20).justify_center().items_center().hover((s) => s.bg(EDGE + "22")).child(icon(name, 15, colour)));
     const chatOn = shared("hansol.chatEnabled")?.on === true;
-    const root = h_flex().id("hud-band").size_full().px(16).gap(12).items_center().bg("#0a1323").rounded(10).border(1).border_color("#8fb4d82e").text_color(P.ink)
+    const root = h_flex().id("hud-band").size_full().px(16).gap(12).items_center().bg("#0a1323").rounded(R_OUT).border(1).border_color("#8fb4d82e").text_color(P.ink)
       .on_size_change((size, cx) => { const was = this.bandW ?? 1920, now = size?.width ?? was; this.bandW = now; if ((was < 1500) !== (now < 1500) || (was < 1250) !== (now < 1250)) cx.notify(); })
       .child(div().flex_none().w(22).h(22).child(svg(`${A}/ring-seg.svg`).absolute().w(22).h(22).text_color(EDGE).spin(9000)).child(div().absolute().left(9).top(9).w(4).h(4).rounded(2).bg("#ffffff")))
       .child(div().flex_none().whitespace_nowrap().text_size(15).font_weight(700).text_color("#f2f7fd").child("MOSSES"))
@@ -377,9 +431,9 @@ export class MossesPart {
       .child(h_flex().flex_1().min_w(0).gap(6).items_center().children(x.states.map((st) => chip(st))))
       .child(h_flex().flex_none().gap(6).items_center().child(div().w(6).h(6).rounded(3).bg(STATE.done.color).loop("opacity", { from: 0.4, to: 1, period: 1600 })).child(cap(`Linked · ${pad2(list.length)}`, P.ink)))
       .when(!!x.sw, (el) => { const view = shared("hansol.view") === "board" ? "board" : "office";
-        const seg = (key, label) => div().id(`view-${key}`).flex_none().h(20).px(11).flex().items_center().rounded(2).text_size(11.5).font_weight(600).cursor_pointer()
-          .bg(view === key ? EDGE + "26" : "#00000000").text_color(view === key ? EDGE : P.muted).hover((s) => s.text_color("#ffffff"))
-          .on_click(() => { setShared("hansol.view.at", Date.now()); setShared("hansol.view", key); }).child(label);
+        const seg = (key, label) => cutRow(h_flex().id(`view-${key}`).flex_none().items_center().cursor_pointer()
+          .on_click(() => { setShared("hansol.view.at", Date.now()); setShared("hansol.view", key); }), 20, 6, view === key ? EDGE + "26" : "#00000000", "#00000000",
+          div().px(5).flex().items_center().text_size(11.5).font_weight(600).text_color(view === key ? EDGE : P.muted).hover((s) => s.text_color("#ffffff")).child(label));
         return el.child(cutRow(h_flex().flex_none().items_center(), 28, 9, "#0a132399", "#8fb4d84d", h_flex().gap(2).items_center().child(seg("office", "RADAR")).child(seg("board", "BOARD")))); })
       .child(iconTool("hansol-chat-option", "chat", chatOn ? "대화 탭: 켬 (누르면 끔)" : "대화 탭: 끔 (누르면 켬)", chatOn ? EDGE : EDGE + "77")
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
@@ -412,7 +466,7 @@ export class MossesPart {
       if (key !== m.idsKey) { m.idsKey = key; cx.timer.after(0, () => setShared("hansol.mzUnits", ids)); } }
     { const hist = (m.hist ??= JSON.parse(JSON.stringify(shared("hansol.mzHist") ?? {}))); let dirty = false; // what each agent worked on, as its work title changed (the last 8)
       for (const a of units) { const text = a.status === "blocked" ? "" : activityText(a), h = (hist[a.id] ??= []), last = h[h.length - 1];
-        if (text && last?.text !== text) { h.push({ at: now, text }); if (h.length > 8) h.shift(); dirty = true; }
+        if (text && !sameWork(last?.text, text)) { pushWork(h, text, now); dirty = true; } // (a work coming back moves to the end: the 8 kept are all different)
         else if (a.status === "done" && last && !last.done) { last.done = now; dirty = true; } }
       for (const id of Object.keys(hist)) if (!byId.has(id) && now - (hist[id][hist[id].length - 1]?.at ?? 0) > 86400000) { delete hist[id]; dirty = true; }
       const rows = units.map((a) => ({ id: a.id, address: a.source === "app" ? a.address ?? null : null, name: nameOf(a), space: String(a.island_title ?? a.space ?? ""), tab: a.tab ?? null, st: stateOf(a).key, task: taskOf(a), el: this.elapsedText?.(a) ?? "",
@@ -466,8 +520,8 @@ export class MossesPart {
     const RW = wide ? 380 : AW, PW = wide ? AW - RW - 18 : 0, SY = TOP + HEAD, SH = H - SY - 12;
     const root = div().id("mz-root").absolute().left(0).top(0).w(left.width).h(left.height)
       .on_mouse_down("right", (_e, c2) => this.mzMenuClose(c2))
-      .on_mouse_down("left", (e, c2) => { this.mzMenuClose(c2); const p = e?.local_position; if (!p) return; c2.stop_propagation(); m.rdrag = { x: p.x, y: p.y, yaw: SCENE.yaw, tilt: SCENE.tilt, on: false }; }) // (a press on anything pressable stops before this)
-      .on_mouse_move((e, c2) => this.mzDragMove(e, c2)).on_mouse_up("left", (_e, c2) => this.mzDragEnd(c2)).on_hover((h, c2) => { if (!h) this.mzDragEnd(c2); });
+      .on_mouse_down("left", (e, c2) => { this.mzMenuClose(c2); const p = e?.local_position; if (!p) return; c2.stop_propagation(); m.pdrag = null; m.rdrag = { x: p.x, y: p.y, yaw: SCENE.yaw, tilt: SCENE.tilt, cam: { ...SCENE.cam }, on: false }; }) // (a planet press whose release was missed must not take this drag) // (a press on anything pressable stops before this)
+      .on_mouse_move((e, c2) => this.mzDragMove(e, c2)).on_scroll_wheel((e, c2) => this.mzZoom(e, c2)).on_mouse_up("left", (_e, c2) => this.mzDragEnd(c2)).on_hover((h, c2) => { if (!h) this.mzDragEnd(c2); });
     root.child(div().id("mz-empty").absolute().left(0).top(0).w(left.width).h(left.height).on_click((_e, c2) => { if (this.justDragged?.()) return; c2.stop_propagation(); if (this.open || this.termPick || this.selId) this.closePanel(c2); }));
     WARP.w = left.width; WARP.h = left.height;
     if (m.enterN != null) { const k = m.enterN > 0 ? systems[m.enterN - 1]?.key : null; m.enterN = null; const L = m.look?.get(k), P0 = k ? m.platesAt?.get(k) : null; this.mzWarpTo(k, ...(P0 ? P0.slice(0, 2) : [X + PW / 2, SY + SH / 2]), cx, L != null ? { src: `${A}/planet-${L}.png`, size: P0?.[2] ?? 160 } : null); }
@@ -481,7 +535,7 @@ export class MossesPart {
     m.mid = [X + PW / 2, SY + SH / 2];
     this.mzTitle(root, X, TOP, systems, units, cur);
     SCENE.on = false; this.mzTop = null;
-    if (PW > 0) { this.mzScene(root, X, SY, PW, SH, systems, sel, cur);
+    if (PW > 0) { this.mzScene(root, X, SY, PW, SH, systems, this.mzLit(list, sel), cur);
       if (this.mzOrbit) root.child(div().absolute().left(X).top(SY).w(0).h(0).child(this.mzOrbit)); }
     this.mzChoices(alerts, cx);
     const shown = this.mzShown(alerts, now);
@@ -500,69 +554,71 @@ export class MossesPart {
       .child(div().flex_none().text_size(38).font_weight(200).text_color(PALE).child(cur ? "02" : "01"))
       .child(v_flex().gap(3)
         .child(div().whitespace_nowrap().text_size(22).font_weight(300).text_color("#f2f7fd").child(cur ? String(cur.title) : "OVERVIEW"))
-        .child(cap(cur ? `PLANETARY SYSTEM  ·  ${cur.units.length} AGENTS  ·  ${cur.rings.length} TABS  ·  빈 곳 드래그: 시점 회전` : `STAR CLUSTER  ·  ${systems.length} WORKSPACES  ·  ${units.length} AGENTS  ·  행성 드래그: 위치 변경  ·  빈 곳 드래그: 시점 회전`)))
+        .child(cap(cur ? `PLANETARY SYSTEM  ·  ${cur.units.length} AGENTS  ·  ${cur.rings.length} TABS  ·  빈 곳 드래그: 시점 회전` : `STAR CLUSTER  ·  ${systems.length} WORKSPACES  ·  ${units.length} AGENTS  ·  행성 드래그: 위치 변경  ·  빈 곳 드래그: 화면 이동  ·  휠: 확대·축소`)))
       .when(!!cur, (el) => el.child(div().ml(10).child(button("mz-back", "‹  모든 작업 공간", "line", (c2) => this.mzWarpTo(null, ...(this.mz.mid ?? [x, y]), c2, this.mz.look?.has(cur.key) ? { src: `${A}/planet-${this.mz.look.get(cur.key)}.png`, size: 300 } : null)))))
-      .when(SCENE.yaw !== 0 || SCENE.tilt !== TILT, (el) => el.child(div().ml(cur ? 0 : 10).child(button("mz-view-reset", "시점 초기화", "line", (c2) => { SCENE.yaw = 0; SCENE.tilt = TILT; c2.notify(); })))));
+      .when(!cur, (el) => el.child(div().ml(10).child(button("mz-auto", "자동 정렬", "line", (c2) => this.mzAutoArrange(c2))))) // the places the person set go; the spread is laid out again
+      .when(!cur && (SCENE.cam.z !== 1 || SCENE.cam.x !== 0 || SCENE.cam.y !== 0), (el) => el.child(div().ml(10).child(button("mz-cam-reset", `보기 초기화 · ${Math.round(SCENE.cam.z * 100)}%`, "line", (c2) => { Object.assign(SCENE.cam, { z: 1, x: 0, y: 0 }); c2.notify(); }))))
+      .when(!!cur && (SCENE.yaw !== 0 || SCENE.tilt !== TILT), (el) => el.child(div().ml(cur ? 0 : 10).child(button("mz-view-reset", "시점 초기화", "line", (c2) => { SCENE.yaw = 0; SCENE.tilt = TILT; c2.notify(); })))));
   }
 
   // ---- the scene: each system's planet, orbit lines, name and name plates (all still), and what the moons' view needs (SCENE)
   mzScene(root, x, y, w, h, systems, sel, cur) {
-    const big = !!cur, shown = big ? [cur] : systems, n = shown.length, amber = STATE.blocked.color;
-    const cols = n <= 1 ? 1 : n <= 4 ? 2 : 3, rows = Math.ceil(n / cols), cw = w / cols, ch = h / rows, bodies = [];
-    const el = div().absolute().left(x).top(y).w(w).h(h), lh = big ? 66 : 50, m = this.mz, now = Date.now(), pd = m.pdrag?.on && !big ? m.pdrag : null, orbits = [];
-    m.grid = big ? null : { x, y, cw, ch, cols, keys: shown.map((s) => s.key) };
+    const big = !!cur, shown = big ? [cur] : systems, amber = STATE.blocked.color;
+    const el = div().absolute().left(x).top(y).w(w).h(h).overflow_hidden(), lh = big ? 66 : 50, m = this.mz, now = Date.now(), pd = m.pdrag?.on && !big ? m.pdrag : null, orbits = [], bodies = [];
+    // 2026-11-27 the cluster in 3D: each system a star at its own place (no rows); a drag on the empty floor turns the whole cluster (mosses-model.js clusterRooms)
+    if (!big && (SCENE.yaw !== 0 || SCENE.tilt !== TILT)) { SCENE.yaw = 0; SCENE.tilt = TILT; } // the cluster is always seen from the same side (a system's turned orbits do not come along)
+    const spin = !big && !!m.rdrag?.on; // the view being moved: the moons' view moves the planets every frame; the floor leaves the planets, names and plates out until it stops
+    const nps = shown.map((s) => s.rings.reduce((t, r) => t + r.length, 0)), sizes = nps.map(clusterSize);
+    const Ps = big ? [] : this.mzPlaces(shown), base = big ? null : clusterRooms(Ps, 0, TILT, w, h, sizes), rooms = big ? [{ x: 0, y: 0, w, h, d: 0, f: 1 }] : camRooms(base, w, h, SCENE.cam);
+    m.cl = big ? null : { x, y, w, h, keys: shown.map((s) => s.key), Ps, sizes, off: new Map() };
     const look = planetsFor(systems.map((s) => s.key)); // every work space its own planet (taken over the whole cluster, so it keeps it inside)
     m.plates = new Map(); // id -> its name plate as drawn (kept for the fade-out when the agent goes)
     SCENE.carry = null;
     let menuAt = null;
-    if (pd) { const col = Math.max(0, Math.min(cols - 1, Math.floor((pd.px - x) / cw))), row = Math.max(0, Math.min(rows - 1, Math.floor((pd.py - y) / ch))); // a planet being moved: where it will land
-      if (row * cols + col < n) el.child(div().absolute().left(cw * col + 6).top(ch * row + 6).w(cw - 12).h(ch - 12).rounded(RADIUS).border(1).border_color(EDGE + "aa").bg(EDGE + "10")); }
-    shown.forEach((s, i) => {
-      const col = i % cols, row = Math.floor(i / cols), nr = s.rings.length, ox = big ? 0 : cw * col, oy = big ? 0 : ch * row, vw = big ? w : cw, vh = big ? h : ch;
-      const lw = Math.max(170, Math.min(big ? 340 : 250, vw * (big ? 0.27 : 0.35) - 14)), lx0 = ox + vw - lw - 8;
-      const cx0 = ox + (lx0 - ox) * 0.5, cy0 = oy + vh * 0.5 + (big ? 0 : 18);
-      const A1 = (lx0 - ox) * 0.5 - 26, A2 = vh * 0.5 - (big ? 40 : 58), aRef = Math.max(60, Math.min(A1, A2 / TILT)); // the planet sized at the usual tilt: turning never resizes it
-      const R = Math.max(20, Math.min(big ? 130 : 54, aRef * (big ? 0.34 : 0.3))), IMG = R * 3.2, si = orbits.length;
-      if (!big) (m.platesAt ??= new Map()).set(s.key, [x + cx0, y + cy0, IMG]);
+    shown.map((_, i) => i).sort((p, q) => rooms[p].d - rooms[q].d).forEach((i) => { const s = shown[i]; // far systems first: the near ones are drawn over them
+      const room = rooms[i], nr = s.rings.length, ox = room.x, oy = room.y, vw = room.w, vh = room.h;
+      const g = big ? roomGeom(ox, oy, vw, vh, true) : clusterGeom(ox, oy, nps[i], room.f), { lw, lx0, cx0, cy0, A1, A2, R, IMG } = g, si = orbits.length, dim = big ? 1 : 0.78 + 0.11 * (room.d + 1);
+      if (!big) { (m.platesAt ??= new Map()).set(s.key, [x + cx0, y + cy0, IMG]); m.cl.off.set(s.key, [cx0 - (ox + vw / 2), cy0 - (oy + vh / 2)]); }
+      const zk = big ? 1 : g.k, plh = lh * zk; // (zoomed: the plates scale with the system)
       const ask = s.units.filter((a) => a.status === "blocked").length, done = s.units.filter((a) => a.status === "done").length;
       if (this.mzMenuOpen?.key === s.key && !this.mzMenuOpen.board) menuAt = [s, cx0, cy0, R];
-      orbits.push({ cx: cx0, cy: cy0, R, A1, A2, nr, colour: ask ? amber : PALE }); // the orbit lines follow the tilt: drawn by the moons' view (MzOrbit), not here
-      el.child(image(`${A}/glow-blue.png`).absolute().left(cx0 - R * 2.6).top(cy0 - R * 2.6).w(R * 5.2).h(R * 5.2).opacity(0.3).loop("opacity", { from: 0.2, to: 0.36, period: 7000 }));
+      orbits.push({ cx: cx0, cy: cy0, R, A1, A2, nr, colour: ask ? amber : PALE, i, np: nps[i], src: `${A}/planet-${look.get(s.key)}.png` }); // the orbit lines follow the tilt: drawn by the moons' view (MzOrbit), not here
+      if (!spin) el.child(image(`${A}/glow-blue.png`).absolute().left(cx0 - R * 2.6).top(cy0 - R * 2.6).w(R * 5.2).h(R * 5.2).opacity(0.3).loop("opacity", { from: 0.2, to: 0.36, period: 7000 }));
       const moving = pd?.key === s.key;
-      el.child(image(`${A}/planet-${look.get(s.key)}.png`).absolute().left(cx0 - IMG / 2).top(cy0 - IMG / 2).w(IMG).h(IMG).opacity(moving ? 0.3 : 1));
+      if (!spin) el.child(image(`${A}/planet-${look.get(s.key)}.png`).absolute().left(cx0 - IMG / 2).top(cy0 - IMG / 2).w(IMG).h(IMG).opacity(moving ? 0.3 : dim));
       if (big) el.child(div().id("mz-big-hit").absolute().left(cx0 - R).top(cy0 - R).w(R * 2).h(R * 2).rounded(R).on_mouse_down("right", (_e, c2) => { c2.stop_propagation(); this.mzMenuOpenAt(s, c2); })); // the entered planet: only the right-press menu (a left drag still turns the view)
-      if (!big) { // a press on the planet (or the system's name) warps into it; a drag on the planet moves the system to another place
+      if (!big && !spin) { // a press on the planet (or the system's name) warps into it; a drag on the planet moves the system to another place
         const go = (c2) => { if (this.justDragged?.()) return; this.mzWarpTo(s.key, x + cx0, y + cy0, c2, { src: `${A}/planet-${look.get(s.key)}.png`, size: IMG }); };
         el.child(div().id(`mz-enter-${i}`).absolute().left(cx0 - R).top(cy0 - R).w(R * 2).h(R * 2).rounded(R).cursor_pointer().border(1).border_color("#00000000").hover((s2) => s2.border_color(EDGE))
-          .tooltip(`${s.title} — 눌러서 진입 · 끌어서 위치 변경 · 오른쪽 클릭: 메뉴`).on_mouse_down("right", (_e, c2) => { c2.stop_propagation(); this.mzMenuOpenAt(s, c2); })
+          .when(!this.mzMenuOpen, (e2) => e2.tooltip(`${s.title} — 눌러서 진입 · 끌어서 위치 변경 · 오른쪽 클릭: 메뉴`)).on_mouse_down("right", (_e, c2) => { c2.stop_propagation(); this.mzMenuOpenAt(s, c2); })
           .on_mouse_down("left", (e, c2) => { c2.stop_propagation(); const p = e?.local_position; if (!p) return; // in the root's coordinates (the moves are read on the root)
             m.pdrag = { key: s.key, i, title: s.title, x: x + cx0 - R + p.x, y: y + cy0 - R + p.y, on: false }; })
           .on_click((_e, c2) => { c2.stop_propagation(); go(c2); }));
-        el.child(v_flex().id(`mz-sys-${i}`).absolute().left(ox + 4).top(oy + 6).gap(3).cursor_pointer().on_mouse_down("left", (_e, c2) => c2.stop_propagation()).on_click((_e, c2) => { c2.stop_propagation(); go(c2); })
-          .child(div().max_w(vw - 30).truncate().text_size(17).font_weight(600).text_color("#f2f7fd").child(String(s.title)))
+        el.child(v_flex().id(`mz-sys-${i}`).absolute().left(g.nx).top(g.ny).gap(3).cursor_pointer().on_mouse_down("left", (_e, c2) => c2.stop_propagation()).on_click((_e, c2) => { c2.stop_propagation(); go(c2); })
+          .child(div().max_w(vw - 30).truncate().text_size(17 * zk).font_weight(600).text_color("#f2f7fd").child(String(s.title)))
           .child(h_flex().gap(8).items_center().child(cap(`${s.units.length} Agents`)).when(ask > 0, (e2) => e2.child(cap(`승인 대기 ${ask}`, amber))).when(done > 0, (e2) => e2.child(cap(`작업 보고 ${done}`, STATE.done.color)))));
         if (moving) SCENE.carry = { src: `${A}/planet-${look.get(s.key)}.png`, size: IMG, x0: x, y0: y, d: pd }; // the planet under the pointer: drawn by MzOrbit as the pointer moves (the floor is not redrawn)
       }
       // the name plates: a still column beside the system (text that moves is placed on whole dots and shakes); a thin line ties each to its moon
-      const flat = s.rings.flatMap((ring, k) => ring.map((a, j) => ({ a, k, j, of: ring.length }))), fit = Math.max(1, Math.floor((vh - (big ? 30 : 70)) / lh)), list = flat.slice(0, flat.length > fit ? fit - 1 : fit);
-      const y0 = Math.max(oy + (big ? 10 : 56), cy0 - (Math.min(flat.length, fit) * lh) / 2);
+      const flat = s.rings.flatMap((ring, k) => ring.map((a, j) => ({ a, k, j, of: ring.length }))), fit = Math.max(1, Math.floor((vh - 30) / plh)), list = big ? flat.slice(0, flat.length > fit ? fit - 1 : fit) : flat.slice(0, CL.PLATES);
+      const y0 = big ? Math.max(oy + 10, cy0 - (Math.min(flat.length, fit) * plh) / 2) : g.ply;
       list.forEach(({ a, k, j, of }, li) => {
-        const st = stateOf(a), isAsk = a.status === "blocked", task = taskOf(a), on = a.id === sel, ly = y0 + li * lh, born = m.born?.get(a.id), work = st.key === "working", idle = st.key === "idle", colr = sc(st.key);
-        m.plates.set(a.id, { lx: lx0, ly, lw, lh, text: task || nameOf(a), colour: colr, view: m.viewKey ?? null });
-        el.child(v_flex().id(`mz-l-${a.id}`).absolute().left(lx0).top(ly).w(lw).h(lh - 8).pl(13).pr(10).justify_center().gap(2).rounded(4).bg(on ? "#12304af2" : isAsk ? "#2a1c0cd0" : work ? "#0b2b2ec4" : "#00000000").border(1).border_color(on ? EDGE : isAsk ? amber + "cc" : work ? WORK + "55" : "#00000000").cursor_pointer()
+        const st = stateOf(a), isAsk = a.status === "blocked", task = taskOf(a), on = a.id === sel, ly = y0 + li * plh, born = m.born?.get(a.id), work = st.key === "working", idle = st.key === "idle", colr = sc(st.key);
+        m.plates.set(a.id, { lx: lx0, ly, lw, lh: plh, text: task || nameOf(a), colour: colr, view: m.viewKey ?? null });
+        if (!spin) el.child(v_flex().id(`mz-l-${a.id}`).absolute().left(lx0).top(ly).w(lw).h(plh - 8).pl(13).pr(10).justify_center().gap(2).rounded(R_IN).bg(on ? "#12304af2" : isAsk ? "#2a1c0cd0" : work ? "#0b2b2ec4" : "#00000000").border(1).border_color(on ? EDGE : isAsk ? amber + "cc" : work ? WORK + "55" : "#00000000").cursor_pointer()
           .opacity(born && now - born < 120 ? 0 : 1).transition("opacity", { duration: 600, easing: "ease-out" }) // a new agent's plate fades in
-          .child(div().absolute().left(2).top((lh - 8 - 28) / 2).w(work ? 3 : 2).h(28).bg(colr + (idle ? "55" : "dd")).when(work, (e2) => e2.loop("opacity", { from: 0.35, to: 1, period: 1100 })))
+          .child(div().absolute().left(2).top((plh - 8 - 28 * zk) / 2).w(work ? 3 : 2).h(28 * zk).bg(colr + (idle ? "55" : "dd")).when(work, (e2) => e2.loop("opacity", { from: 0.35, to: 1, period: 1100 })))
           .tooltip(`${nameOf(a)} · ${String(a.island_title ?? a.space ?? "")} / T${a.tab || "-"}`)
           .hover((h2) => h2.bg("#15294af5").border_color(EDGE)).on_hover((hv) => { if (hv) SCENE.hot = a.id; else if (SCENE.hot === a.id) SCENE.hot = null; })
           .on_mouse_down("left", (_e, c2) => c2.stop_propagation()).on_click((_e, c2) => { c2.stop_propagation(); this.mzOpen(a, c2); })
-          .child(div().truncate().text_size(big ? 13.5 : 12.5).font_family(KO).font_weight(600).text_color(isAsk ? "#ffd9a8" : idle ? "#aab6c6" : "#f2f7fd").child(task || nameOf(a)))
-          .child(h_flex().gap(6).items_center().overflow_hidden().child(div().flex_none().w(6).h(6).rounded(3).bg(colr).when(work, (e2) => e2.loop("opacity", { from: 0.3, to: 1, period: 700 }))).child(div().flex_none().whitespace_nowrap().text_size(10.5).font_family(KO).font_weight(work ? 700 : 400).text_color(colr).child(st.label))
-            .child(div().min_w(0).truncate().text_size(10.5).font_family(KO).text_color(P.muted).child(this.elapsedText?.(a) ?? "")).child(div().flex_1())
+          .child(div().truncate().text_size(big ? 13.5 : 12.5 * zk).font_family(KO).font_weight(600).text_color(isAsk ? "#ffd9a8" : idle ? "#aab6c6" : "#f2f7fd").child(task || nameOf(a)))
+          .child(h_flex().gap(6).items_center().overflow_hidden().child(div().flex_none().w(6).h(6).rounded(3).bg(colr).when(work, (e2) => e2.loop("opacity", { from: 0.3, to: 1, period: 700 }))).child(div().flex_none().whitespace_nowrap().text_size(10.5 * zk).font_family(KO).font_weight(work ? 700 : 400).text_color(colr).child(st.label))
+            .child(div().min_w(0).truncate().text_size(10.5 * zk).font_family(KO).text_color(P.muted).child(this.elapsedText?.(a) ?? "")).child(div().flex_1())
             .when(Number(a.helpers) > 0, (e2) => e2.child(cap(`서브 ${a.helpers}`, EDGE))).when(Number(a.shells) > 0, (e2) => e2.child(cap(`셸 ${a.shells}`, SHELL_C))).when(!!a.parent_id, (e2) => e2.child(cap("↳ 연계", EDGE)))
             .child(div().flex_none().text_size(10).font_family(MONO).text_color("#6d83a3").child(`T${a.tab || "-"}`))));
-        bodies.push({ a, cx: cx0, cy: cy0, R, si, k, phase: (j / of) * Math.PI * 2 + k * 2.1 + (look.get(s.key) % 5), period: (big ? 150 : 130) + k * 45, z: big ? 20 : 14, lx: lx0, ly: ly + (lh - 8) / 2, sel: on, born });
+        bodies.push({ a, cx: cx0, cy: cy0, R, si, k, phase: (j / of) * Math.PI * 2 + k * 2.1 + (look.get(s.key) % 5), period: (big ? 150 : 130) + k * 45, z: big ? 20 : 14 * zk, lx: lx0, ly: ly + (plh - 8) / 2, sel: on, born });
       });
-      if (flat.length > list.length) el.child(div().absolute().left(lx0 + 4).top(y0 + list.length * lh + 4).child(cap(`+${flat.length - list.length} · 행성을 눌러 전체 보기`, EDGE)));
+      if (flat.length > list.length && !spin) el.child(div().absolute().left(lx0 + 4).top(y0 + list.length * plh + 4).child(cap(`+${flat.length - list.length} · 행성을 눌러 전체 보기`, EDGE)));
     });
     for (const [id, g] of m.gone ?? []) if (g.view === (m.viewKey ?? null) && !m.plates.has(id)) // a gone agent's plate: drawn once more where it was, fading out (same id: the fade starts from the last look)
       el.child(v_flex().id(`mz-l-${id}`).absolute().left(g.lx).top(g.ly).w(g.lw).h(g.lh - 8).pl(13).justify_center().opacity(now - g.at < 40 ? 1 : 0).transition("opacity", { duration: 600, easing: "ease-in" })
@@ -570,7 +626,7 @@ export class MossesPart {
     this.mzTop = menuAt ? this.mzCallout(x, y, ...menuAt, w, h) : null;
     root.child(el);
     m.look = look;
-    Object.assign(SCENE, { on: true, w, h, bodies, orbits, open: (a, c) => this.mzOpen(a, c), links: bodies.filter((b) => b.a.parent_id).map((b) => [b.a.parent_id, b.a.id]) });
+    Object.assign(SCENE, { on: true, w, h, bodies, orbits, spin, cluster: big ? null : { base, w, h }, open: (a, c) => this.mzOpen(a, c), links: bodies.filter((b) => b.a.parent_id).map((b) => [b.a.parent_id, b.a.id]) });
   }
 
   // The inbox's requests; review (hansol.mosses:fx): a made-up request with three choices, to look at the buttons (its address does not exist: a press sends nothing).
@@ -588,13 +644,13 @@ export class MossesPart {
     const { byId, systems, units } = this.mzSystems(list);
     this.mzTrack(list, units, byId, now, cx);
     const alerts = mailList(list); this.mzChoices(alerts, cx);
-    const look = planetsFor(systems.map((s) => s.key)), hist = shared("hansol.mzHist") ?? {}, sel = shared("hansol.sel"), amber = STATE.blocked.color;
+    const look = planetsFor(systems.map((s) => s.key)), hist = shared("hansol.mzHist") ?? {}, sel = this.mzLit(list, shared("hansol.sel")), amber = STATE.blocked.color;
     const RANK = { blocked: 0, working: 1, done: 2, idle: 3, shell: 4 }, PAD = 16, RW = W >= 900 ? 380 : 0, k = Math.max(W / 1920, H / 1200);
     const CW = W - PAD * 2 - (RW ? RW + 14 : 0), colW = Math.max(300, Math.min(440, systems.length ? (CW - 12 * (systems.length - 1)) / systems.length : CW));
-    const tag = (text, colour) => div().flex_none().h(17).px(6).flex().items_center().rounded(3).bg(colour + "22").text_size(10).font_family(KO).font_weight(600).text_color(colour).child(text);
+    const tag = (text, colour) => cutTag(text, colour);
     const card = (a) => {
-      const st = stateOf(a), ask = a.status === "blocked", on = a.id === sel, task = taskOf(a), past = (hist[a.id] ?? []).filter((h) => h.text !== task).slice(-2).reverse();
-      return h_flex().id(`mzb-c-${a.id}`).flex_none().w_full().gap(10).items_start().px(10).py(9).rounded(6).cursor_pointer()
+      const st = stateOf(a), ask = a.status === "blocked", on = a.id === sel, task = taskOf(a), past = pastWork(hist[a.id], task, 2);
+      return h_flex().id(`mzb-c-${a.id}`).flex_none().w_full().gap(10).items_start().px(10).py(9).rounded(R_IN).cursor_pointer()
         .bg(on ? "#12304af2" : CARD_BG[st.key] ?? GLASS).border(1).border_color(on ? EDGE : CARD_EDGE[st.key] ?? "#8fb4d82e").opacity(st.key === "idle" && !on ? 0.72 : 1).hover((s) => s.bg("#15294af0").border_color(EDGE))
         .on_mouse_down("left", (_e, c) => c.stop_propagation()).on_click((_e, c) => { c.stop_propagation(); this.mzOpen(a, c); })
         .child(stateBar(st.key))
@@ -612,7 +668,7 @@ export class MossesPart {
       const counts = Object.entries(RANK).map(([key]) => [key, s.units.filter((a) => stateOf(a).key === key).length]).filter(([, n]) => n > 0), ask = s.units.some((a) => a.status === "blocked");
       const sorted = [...s.units].sort((p, q) => RANK[stateOf(p).key] - RANK[stateOf(q).key] || (p.since ?? 0) - (q.since ?? 0));
       return v_flex().id(`mzb-col-${i}`).flex_none().w(colW).h_full().gap(8)
-        .child(h_flex().id(`mzb-h-${i}`).relative().flex_none().h(56).px(10).gap(10).items_center().rounded(8).bg(GLASS_HEAD).border(1).border_color(ask ? amber + "88" : "#8fb4d83d").cursor_pointer()
+        .child(h_flex().id(`mzb-h-${i}`).relative().flex_none().h(56).px(10).gap(10).items_center().rounded(R_IN).bg(GLASS_HEAD).border(1).border_color(ask ? amber + "88" : "#8fb4d83d").cursor_pointer()
           .hover((e) => e.border_color(EDGE)).tooltip(`${s.title} — 눌러서 RADAR에서 진입 · 오른쪽 클릭 메뉴`)
           .on_mouse_down("left", (_e, c) => c.stop_propagation()).on_click((_e, c) => { c.stop_propagation(); setShared("hansol.view.at", Date.now()); setShared("hansol.view", "office"); this.mzEnter(s.key); })
           .child(this.mzMenuPopover(`mzb-menu-${i}`, s, image(`${A}/planet-${look.get(s.key)}.png`).flex_none().w(40).h(40)))
@@ -667,11 +723,11 @@ export class MossesPart {
       body.child(item(a, amber, blockedText(a) || "승인 요청", acts));
     }
     if (!n) body.child(v_flex().px(12).py(12).gap(4).border_t(1).border_color(RULE).child(div().text_size(12.5).font_family(KO).text_color("#dcecff").child("응답할 승인 요청 없음")));
-    const inbox = v_flex().id("mz-inbox").flex_none().w_full().max_h(Math.round(hMax * (board ? 1 : 0.5))).bg(GLASS).border(1).border_color(alerts.length ? amber + "88" : "#8fb4d83d").rounded(10).overflow_hidden()
+    const inbox = v_flex().id("mz-inbox").flex_none().w_full().max_h(Math.round(hMax * (board ? 1 : 0.5))).bg(GLASS).border(1).border_color(alerts.length ? amber + "88" : "#8fb4d83d").rounded(R_OUT).overflow_hidden()
       .on_mouse_down("left", (_e, c2) => c2.stop_propagation())
       .child(h_flex().flex_none().h(40).px(12).gap(8).items_center()
         .child(div().text_size(14).font_weight(600).text_color("#f2f7fd").child("INBOX")).child(cap("승인 요청")).child(div().flex_1())
-        .child(div().flex_none().h(20).px(8).flex().items_center().rounded(10).bg(n ? amber + "2a" : "#8fb4d81a").text_size(11).font_family(MONO).text_color(n ? amber : P.muted).child(pad2(n))))
+        .child(cutTag(pad2(n), n ? amber : P.muted, 20, MONO)))
       .child(body);
     root.child(v_flex().absolute().left(x).top(y).w(w).h(hMax).gap(12).child(inbox).when(!board, (e) => e.child(this.mzStatusPanel())));
   }
@@ -682,12 +738,12 @@ export class MossesPart {
     const rows = shared("hansol.mzBoard")?.rows ?? [], hist = shared("hansol.mzHist") ?? {}, amber = STATE.blocked.color, hm = (ms) => hms(ms).slice(0, 5);
     const groups = []; for (const r of rows) { let g = groups.find((x) => x.space === r.space); if (!g) groups.push((g = { space: r.space, rows: [] })); g.rows.push(r); }
     const open = (r) => { if (r.address) openTerminalWindow(r.address, r.name); else setShared("hansol.mosses", { cmd: `openid:${r.id}`, at: Date.now() }); };
-    const chip = (text, colour) => div().flex_none().h(17).px(6).flex().items_center().rounded(3).bg(colour + "22").text_size(10).font_family(KO).font_weight(600).text_color(colour).child(text);
+    const chip = (text, colour) => cutTag(text, colour);
     const body = v_flex().id("mzs-body").flex_1().min_h(0).overflow_y_scroll().px(10).pb(10).gap(4);
     for (const g of groups) {
       body.child(h_flex().flex_none().h(34).gap(8).items_end().pb(5).child(div().text_size(14).font_weight(600).text_color("#f2f7fd").child(String(g.space || "—"))).child(cap(`${g.rows.length} AGENTS`)).child(div().flex_1().h(1).mb(4).bg(RULE)));
-      for (const r of g.rows) { const st = STATE[r.st] ?? STATE.idle, past = (hist[r.id] ?? []).filter((h) => h.text !== r.task).slice(-3).reverse(), leader = r.parent ? rows.find((x) => x.id === r.parent) : null;
-        body.child(h_flex().id(`mzs-${r.id}`).flex_none().ml(leader ? 16 : 0).gap(10).items_start().px(10).py(8).rounded(6).bg(CARD_BG[r.st] ?? "#0d1a2e99").border(1).border_color(CARD_EDGE[r.st] ?? "#8fb4d824").opacity(r.st === "idle" ? 0.72 : 1).cursor_pointer()
+      for (const r of g.rows) { const st = STATE[r.st] ?? STATE.idle, past = pastWork(hist[r.id], r.task, 3), leader = r.parent ? rows.find((x) => x.id === r.parent) : null;
+        body.child(h_flex().id(`mzs-${r.id}`).flex_none().ml(leader ? 16 : 0).gap(10).items_start().px(10).py(8).rounded(R_IN).bg(CARD_BG[r.st] ?? "#0d1a2e99").border(1).border_color(CARD_EDGE[r.st] ?? "#8fb4d824").opacity(r.st === "idle" ? 0.72 : 1).cursor_pointer()
           .hover((s) => s.bg("#15294acc").border_color(EDGE)).on_hover((hv) => { if (hv) SCENE.hot = r.id; else if (SCENE.hot === r.id) SCENE.hot = null; }).on_mouse_down("left", (_e, c) => c.stop_propagation()).on_click((_e, c) => { c.stop_propagation(); open(r); })
           .child(stateBar(st.key))
           .child(v_flex().flex_1().min_w(0).gap(4)
@@ -704,10 +760,10 @@ export class MossesPart {
       }
     }
     if (!rows.length) body.child(div().py(20).text_size(12.5).font_family(KO).text_color(P.muted).child("표시할 에이전트 없음"));
-    return v_flex().id("mz-status").flex_1().min_h(0).w_full().bg(GLASS).border(1).border_color("#8fb4d83d").rounded(10).overflow_hidden().on_mouse_down("left", (_e, c2) => c2.stop_propagation())
+    return v_flex().id("mz-status").flex_1().min_h(0).w_full().bg(GLASS).border(1).border_color("#8fb4d83d").rounded(R_OUT).overflow_hidden().on_mouse_down("left", (_e, c2) => c2.stop_propagation())
       .child(h_flex().flex_none().h(40).px(12).gap(8).items_center().border_b(1).border_color(RULE)
         .child(div().text_size(14).font_weight(600).text_color("#f2f7fd").child("AGENT STATUS")).child(cap("지금 하는 일 · 지금까지 한 일")).child(div().flex_1())
-        .child(div().flex_none().h(20).px(8).flex().items_center().rounded(10).bg("#8fb4d81a").text_size(11).font_family(MONO).text_color(P.muted).child(pad2(rows.length))))
+        .child(cutTag(pad2(rows.length), P.muted, 20, MONO)))
       .child(body);
   }
 

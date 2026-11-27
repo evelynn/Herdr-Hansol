@@ -1000,6 +1000,9 @@ ACTIVITY_RULES = (
     (re.compile(r'구현|개발|코드|implement|develop|coding', re.I), '기능 개발'),
 )
 
+ACTIVITY_CHARS = 20   # the status excerpt's length, '…' included (was 10, 2026-11-27: too short to tell what an agent does)
+
+
 def recent_activity(text):
     """Prefer a short recent conversational excerpt, then a generic category."""
     lines = str(text or '').splitlines()
@@ -1012,9 +1015,10 @@ def recent_activity(text):
             content = re.sub(r'\s+', ' ', match.group(1)).strip()
             if (len(content) < 4 or (korean_only and not re.search(r'[가-힣]', content))
                     or re.match(r'^(?:Ran |Running |Edited |Working|Worked|Tip:|Ask |Read |Reading |Searched |Searching |Explored |Exploring |Called |Calling |Rendering |Locating |https?://|[/\\]|[A-Za-z][\w.-]*\()', content, re.I)
-                    or re.search(r'(?:password|passwd|secret|token|api[_ -]?key|비밀번호|비밀키)\s*[:=]', content, re.I)):
+                    or re.search(r'(?:password|passwd|secret|token|api[_ -]?key|비밀번호|비밀키)\s*[:=]', content, re.I)
+                    or re.match(r'^\S+\s+\$\d+(?:\.\d+)?\s+last\s+\$', content)):  # Claude Code's status line ("full $41.43 last $0.52 ...")
                 continue
-            return content if len(content) <= 10 else content[:9] + '…'
+            return content if len(content) <= ACTIVITY_CHARS else content[:ACTIVITY_CHARS - 1] + '…'
     for line in reversed(lines):
         line = line.strip()
         if len(line) < 4 or line.startswith(('│', '╭', '╰', '─', 'Tip:', '›')):

@@ -7,11 +7,12 @@ import { closeOverlay, exec, notify, openOverlay, panes, props, settings, setSha
 import { P } from "./common.js";
 import { icon } from "./icons.js";
 import { iconBtn } from "./ui.js";
+import { NEON, LINE, RULE, R_OUT, WIN_BG, WIN_HEAD, cutRow, cutIconButton, isMz } from "./mz-ui.js";
 import { spaceForIsland } from "./actions.js";
 import { LOG_N, fetchArgs, netReason, parseRemotes, remotesArgs, pullArgs, upstreamArgs, syncArgs, parseSync, ago, currentBranch, diffArgs, diffRows, fileArgs, folderKey, joinFiles, laneColor, layoutLanes, logArgs, parseLog, parseShow, rootArgs, showArgs, spaceFolder, stamp } from "./git-rules.js";
 
 const ROW = 26, LANE = 14, PAD = 8, DIFF_ROW = 20, REFRESH_MS = 15000;
-export const C = { bg: "#151e2e", get head() { return P.paper; }, line: "#2c3a4f", hover: "#22324a", get sel() { return P.select; }, dim: "#7f8ea3", add: "#7bd88f", del: "#ff8a8a", tag: "#f4ce76", remote: "#7bd88f" };
+export const C = { get bg() { return isMz() ? WIN_BG : "#151e2e"; }, get head() { return isMz() ? WIN_HEAD : P.paper; }, get line() { return isMz() ? RULE : "#2c3a4f"; }, hover: "#22324a", get sel() { return P.select; }, dim: "#7f8ea3", add: "#7bd88f", del: "#ff8a8a", tag: "#f4ce76", remote: "#7bd88f" };
 // One window, two sizes: the graph alone (narrow and tall), and the graph with the pressed commit on its right (the list keeps its
 // width, the commit gets the rest). The App cannot resize a window, so a change of size opens the same window again in its place;
 // the history it had is kept in shared LOG_KEEP and drawn at once. A size dragged or docked is kept per size (shared SAVE; one
@@ -27,7 +28,7 @@ function gitWinSize(base, size = null) {
 export function gitOpenWin(role, base, size = null, at = null) {
   if (role !== "git-graph") return;
   const { w, h } = gitWinSize(base, size), all = shared(SAVE) ?? {};
-  openOverlay({ mod: "hansol", kind: "window", key: WIN_KEY, width: w, height: h, ...(at ? { at } : {}), props: { ...base, role, width: w, height: h } });
+  openOverlay({ mod: "hansol", kind: "window", key: WIN_KEY, width: w, height: h, ...(at ? { at } : {}), ...(isMz() ? { frame: "none" } : {}), props: { ...base, role, width: w, height: h } });
   if (size) setShared(SAVE, { ...all, [modeOf(base)]: { w }, h });
 }
 // The list's width: the graph-alone width, as long as the commit keeps DETAIL_MIN.
@@ -73,6 +74,15 @@ export class GitPart {
     if (!sp || !folder) return no("작업 공간 폴더를 찾지 못함");
     cx.spawn(async () => { const root = await this.gitRootOf(folder, sp.machine); if (root) this.openGitGraph({ root, on: sp.machine ?? null, space: sp.name }); else no(`Git 저장소가 아님 (${folder})`); });
   }
+  // 2026-11-27 the planet menu's "작업 폴더 열기": the work space's folder in Explorer (this PC only; a remote machine's folder is not here)
+  folderOpenFor(members, title, cx) {
+    let sl = [], pl = []; try { sl = spaces(); pl = panes(); } catch {}
+    const sp = spaceForIsland(members, sl, { source: "app", title }), folder = spaceFolder(sp, pl);
+    const no = (why) => { try { notify({ title: "작업 폴더", body: `${title}: ${why}` }); } catch {} };
+    if (!sp || !folder) return no("작업 공간 폴더를 찾지 못함");
+    if (sp.machine) return no(`원격 머신(${sp.machine})의 폴더라 이 PC에서 열 수 없음`);
+    cx.spawn(async () => { try { await exec("explorer", [String(folder).replace(/\//g, "\\")], { timeout: 15000 }); } catch {} }); // (explorer answers 1 even when it worked)
+  }
   openGitGraph({ root, on, space, hash = null, file = null }) { gitOpenWin("git-graph", { root, on, space, hash, file }); }
 
   // ---- size and docking (as the terminal popups: the ◢ corner drags the size, ◧ ◨ ▣ dock to a half / the whole screen)
@@ -105,7 +115,7 @@ export class GitPart {
     gitOpenWin(p.role, this.gitBase(), { width: box.w, height: h }, { x: box.x, y: top });
   }
   gitWinButtons() {
-    const b = (id, label, tip, fn) => div().id(id).flex_none().w(34).h(32).flex().items_center().justify_center().rounded(6).text_size(16).text_color(P.ink).cursor_pointer().tooltip(tip)
+    const b = (id, label, tip, fn) => isMz() ? cutIconButton(id, 30, 26, div().text_size(15).text_color(P.ink).child(label), tip, () => fn()) : div().id(id).flex_none().w(34).h(32).flex().items_center().justify_center().rounded(6).text_size(16).text_color(P.ink).cursor_pointer().tooltip(tip)
       .hover((s) => s.bg(P.press)).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(); }).child(label);
     return [b("git-dock-left", "◧", "왼쪽 절반에 붙이기", () => this.gitDock("left")), b("git-dock-right", "◨", "오른쪽 절반에 붙이기", () => this.gitDock("right")),
       b("git-dock-full", "▣", "화면 전체로 넓히기", () => this.gitDock("full"))];
@@ -218,21 +228,25 @@ export class GitPart {
 
   // ---- drawing: shared parts
   gitWinHead(title, sub, extra = []) {
-    return h_flex().id("git-head").flex_none().h(48).px(14).gap(10).items_center().bg(C.head).border_b(1).border_color(C.line)
+    return h_flex().id("git-head").flex_none().h(48).px(14).gap(10).items_center().bg(C.head).border_b(1).border_color(C.line).when(isMz(), (e) => e.rounded_t(R_OUT - 1))
       .child(icon("tree", 20, P.blue))
       .child(div().flex_none().text_size(16).font_weight(800).text_color(P.ink).child(title))
       .child(div().flex_1().min_w(0).truncate().text_size(13).text_color(P.muted).child(sub))
       .children(extra)
       .children(this.gitWinButtons())
-      .child(iconBtn("git-close", "x", () => closeOverlay(props()?.overlay), { size: 32, isize: 16, tip: "닫기" }));
+      .child(iconBtn("git-close", "x", () => closeOverlay(props()?.overlay), { size: 32, isize: 16, tip: "닫기", color: isMz() ? "#f0a0ac" : undefined }));
   }
   gitTextBtn(id, label, tip, fn, warn = false) {
+    if (isMz()) return cutRow(h_flex().id(id).flex_none().items_center().cursor_pointer().tooltip(tip).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }),
+      28, 8, warn ? C.tag + "22" : "#0a132399", warn ? C.tag + "aa" : LINE, div().px(4).flex().items_center().text_size(12).font_weight(700).text_color(warn ? C.tag : P.ink).hover((s) => s.text_color("#ffffff")).child(label));
     return div().id(id).flex_none().h(30).px(10).flex().items_center().rounded(6).border(1).border_color(warn ? C.tag : C.line).bg(warn ? "#493a24" : P.white)
       .text_size(12).font_weight(700).text_color(warn ? C.tag : P.ink).cursor_pointer().tooltip(tip).hover((s) => s.bg(P.press))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(label);
   }
   gitRefChip(ref, color, id) {
     const cur = ref.kind === "branch" && ref.head, edge = ref.kind === "tag" ? C.tag : ref.kind === "remote" ? C.remote : ref.kind === "detached" ? C.del : color;
+    if (isMz()) return cutRow(h_flex().id(id).flex_none().items_center(), 18, 5, cur ? color : edge + "22", edge, h_flex().max_w(118).gap(3).items_center()
+      .when(cur, (e) => e.child(icon("check", 11, C.bg))).child(div().min_w(0).truncate().font_family(mono()).text_size(11).font_weight(cur ? 800 : 600).text_color(cur ? C.bg : edge).child(ref.kind === "tag" ? `◆ ${ref.name}` : ref.name)));
     return h_flex().id(id).flex_none().max_w(130).h(18).px(6).gap(3).items_center().rounded(5).border(1).border_color(edge).when(cur, (e) => e.bg(color))
       .when(cur, (e) => e.child(icon("check", 11, C.bg)))
       .child(div().min_w(0).truncate().font_family(mono()).text_size(11).font_weight(cur ? 800 : 600).text_color(cur ? C.bg : edge).child(ref.kind === "tag" ? `◆ ${ref.name}` : ref.name));
@@ -272,7 +286,8 @@ export class GitPart {
   gitGraphView() {
     const g = this.gw ?? {}, name = String(g.root ?? "").split("/").filter(Boolean).pop() ?? "", branch = currentBranch(g.commits ?? []);
     const info = [ // the tool row: what the repository is at (left), what can be done (right)
-      ...(branch ? [h_flex().id("git-branch").flex_none().max_w(260).h(24).px(8).gap(4).items_center().rounded(6).bg("#1e4f8a").child(icon("check", 12, "#ffffff")).child(div().min_w(0).truncate().text_size(12).font_weight(700).text_color("#ffffff").child(branch))] : []),
+      ...(branch ? [isMz() ? cutRow(h_flex().id("git-branch").flex_none().items_center(), 24, 7, NEON + "22", NEON + "aa", h_flex().max_w(240).gap(4).items_center().child(icon("check", 12, NEON)).child(div().min_w(0).truncate().text_size(12).font_weight(700).text_color(NEON).child(branch)))
+        : h_flex().id("git-branch").flex_none().max_w(260).h(24).px(8).gap(4).items_center().rounded(6).bg("#1e4f8a").child(icon("check", 12, "#ffffff")).child(div().min_w(0).truncate().text_size(12).font_weight(700).text_color("#ffffff").child(branch))] : []),
       div().flex_none().text_size(12).text_color(C.dim).child(g.state === "ready" ? `커밋 ${g.commits.length}개${g.commits.length >= LOG_N ? " (최근)" : ""}` : ""),
       ...(g.sync ? [div().id("git-sync").flex_none().text_size(12).font_weight(700).text_color(g.sync.behind ? C.tag : C.dim).tooltip(`${g.upstream} 기준: 앞섬 ${g.sync.ahead}개 · 뒤처짐 ${g.sync.behind}개`).child(`↑${g.sync.ahead} ↓${g.sync.behind}`)] : []),
     ], actions = [
@@ -289,7 +304,7 @@ export class GitPart {
     ];
     const split = !!props()?.hash || !!props()?.pane; // the window's size says it: the graph alone, or the graph with a commit on the right
     // the window's place on screen, from any press in it (a wider window moves left if it would run past the screen)
-    const root = v_flex().id("git-graph-root").size_full().bg(C.bg).on_mouse_down("left", (e) => { if (e.local_position) this.gwAt = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; })
+    const root = v_flex().id("git-graph-root").size_full().bg(C.bg).when(isMz(), (e) => e.rounded(R_OUT).border(1).border_color(LINE)) // (MOSSES: its own frame, rounded as every window).on_mouse_down("left", (e) => { if (e.local_position) this.gwAt = { x: e.position.x - e.local_position.x, y: e.position.y - e.local_position.y }; })
       .child(this.gitWinHead(name, `${g.space ? `공간 ${g.space} · ` : ""}${g.root ?? ""}`))
       .child(h_flex().id("git-tools").flex_none().h(40).px(12).gap(8).items_center().border_b(1).border_color(C.line).children(info).child(div().flex_1()).children(actions));
     if (g.state === "loading") return root.child(this.gitEmpty("기록을 읽는 중…"));
